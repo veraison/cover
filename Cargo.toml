@@ -1,0 +1,12 @@
+[package]
+name = "cover"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "cover"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "cover-cli"
+path = "src/bin/verify.rs"
