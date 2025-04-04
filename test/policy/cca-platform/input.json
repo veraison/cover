@@ -1,0 +1,300 @@
+[
+  {
+    "environment": {
+      "class": {
+        "class-id": {
+          "tag": 600,
+          "value": "[base64]:f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
+        }
+      }
+    },
+    "element-list": [
+      {
+        "mkey": {
+          "tag": 602,
+          "value": "cfg v1.0.0"
+        },
+        "mval": {
+          "raw-value": {
+            "type": "bytes",
+            "value": "AQcGBQQDAgEADw4NDAsKCQgXFhUUExIREB8eHRwbGhkY"
+          }
+        }
+      },
+      {
+        "mkey": "lifecycle",
+        "mval": {
+          "-1": 3
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "BL",
+            "4": "3.4.2",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M1",
+            "4": "1.2",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M2",
+            "4": "1.2.3",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M3",
+            "4": "1",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      }
+    ],
+    "authority": [
+      {
+        "type": "cose-key",
+        "value": {
+          "kty": "EC2",
+          "crv": "P-384",
+          "x": "IShnxS4rlQiwpCCpBWDzlNLfqiG911FP8akBr-fh94uxHU5m-Kijivp2r2oxxN6M",
+          "y": "hM4tr8mWQli1P61xh3T0ViDREbF26DGOEYfbAjWjGNN7pZf-6A4OTHYqEryz6m7U"
+        }
+      }
+    ],
+    "cm-type": "evidence",
+    "profile": {
+      "type": "uri",
+      "value": "http://arm.com/CCA-SSD/1.0.0"
+    }
+  },
+  {
+    "environment": {
+      "instance": {
+        "type": "bytes",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "element-list": [
+      {
+        "mval": {
+          "integrity-registers": {
+            "\"rem0\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem1\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem2\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem3\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rim\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+          }
+        }
+      }
+    ],
+    "authority": [
+      {
+        "type": "cose-key",
+        "value": {
+          "kty": "EC2",
+          "crv": "P-384",
+          "x": "IShnxS4rlQiwpCCpBWDzlNLfqiG911FP8akBr-fh94uxHU5m-Kijivp2r2oxxN6M",
+          "y": "hM4tr8mWQli1P61xh3T0ViDREbF26DGOEYfbAjWjGNN7pZf-6A4OTHYqEryz6m7U"
+        }
+      }
+    ],
+    "cm-type": "evidence",
+    "profile": {
+      "type": "uri",
+      "value": ""
+    }
+  },
+  {
+    "environment": {
+      "class": {
+        "class-id": {
+          "tag": 600,
+          "value": "[base64]:f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
+        }
+      }
+    },
+    "element-list": [
+      {
+        "mkey": {
+          "tag": 602,
+          "value": "cfg v1.0.0"
+        },
+        "mval": {
+          "raw-value": {
+            "type": "bytes",
+            "value": "AQcGBQQDAgEADw4NDAsKCQgXFhUUExIREB8eHRwbGhkY"
+          }
+        }
+      },
+      {
+        "mkey": "lifecycle",
+        "mval": {
+          "-1": 3
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "BL",
+            "4": "3.4.2",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M1",
+            "4": "1.2",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M2",
+            "4": "1.2.3",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      },
+      {
+        "mkey": {
+          "tag": 601,
+          "value": {
+            "1": "M3",
+            "4": "1",
+            "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          }
+        },
+        "mval": {
+          "digests": [
+            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+          ]
+        }
+      }
+    ],
+    "authority": [
+      {
+        "type": "cose-key",
+        "value": {
+          "kty": "EC2",
+          "crv": "P-256",
+          "x": "_gPssLIiLnF0XrTGU73XMKlTIk4QhU80ttXzJ7waTpo",
+          "y": "HgibD8RtoczLlJBzDi62cTacMR9NOL8mh6RfU2E3lwk"
+        }
+      }
+    ],
+    "cm-type": "reference-values"
+  },
+  {
+    "environment": {
+      "instance": {
+        "type": "bytes",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    "element-list": [
+      {
+        "mval": {
+          "integrity-registers": {
+            "\"rem0\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem1\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem2\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rem3\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ],
+            "\"rim\"": [
+              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+          }
+        }
+      }
+    ],
+    "authority": [
+      {
+        "type": "cose-key",
+        "value": {
+          "kty": "EC2",
+          "crv": "P-256",
+          "x": "_gPssLIiLnF0XrTGU73XMKlTIk4QhU80ttXzJ7waTpo",
+          "y": "HgibD8RtoczLlJBzDi62cTacMR9NOL8mh6RfU2E3lwk"
+        }
+      }
+    ],
+    "cm-type": "reference-values"
+  }
+]

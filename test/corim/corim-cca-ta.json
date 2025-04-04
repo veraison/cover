@@ -1,0 +1,52 @@
+{
+  "id": "test ta corim id",
+  "tags": [
+    {
+      "type": "comid",
+      "value": {
+        "language": "en-GB",
+        "tag-identity": {
+          "tag-id": "43bbe37f-2e61-4b33-aed3-53cff1428b17"
+        },
+        "entities": [
+          {
+            "entity-name": "ACME Ltd.",
+            "reg-id": {
+              "type": "uri",
+              "value": "https://acme.example"
+            },
+            "role": [
+              "tag-creator",
+              "creator",
+              "maintainer"
+            ]
+          }
+        ],
+        "triples": {
+          "attest-key-triples": [
+            [
+              {
+                "class": {
+                  "class-id": {
+                    "tag": 600,
+                    "value": "[base64]:f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
+                  }
+                },
+                "instance": {
+                  "type": "ueid",
+                  "value": "AQcGBQQDAgEADw4NDAsKCQgXFhUUExIREB8eHRwbGhkY"
+                }
+              },
+              [
+                {
+                  "type": "bytes",
+                  "value": "ewogICJjcnYiOiAiUC0zODQiLAogICJrdHkiOiAiRUMiLAogICJ4IjogIklTaG54UzRybFFpd3BDQ3BCV0R6bE5MZnFpRzkxMUZQOGFrQnItZmg5NHV4SFU1bS1LaWppdnAycjJveHhONk0iLAogICJ5IjogImhNNHRyOG1XUWxpMVA2MXhoM1QwVmlEUkViRjI2REdPRVlmYkFqV2pHTk43cFpmLTZBNE9USFlxRXJ5ejZtN1UiCn0K"
+                }
+              ]
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}

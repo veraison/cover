@@ -1,0 +1,13 @@
+{
+    "ear.status": "affirming",
+    "ear.trustworthiness-vector": {
+        "instance-identity": 2,
+        "configuration": 2,
+        "executables": 3,
+        "file-system": 0,
+        "hardware": 2,
+        "runtime-opaque": 2,
+        "storage-opaque": 2,
+        "sourced-data": 0
+    }
+}

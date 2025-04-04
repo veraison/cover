@@ -1,0 +1,34 @@
+[package]
+name = "cover"
+version = "0.0.1"
+edition = "2024"
+
+[lib]
+name = "cover"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "cover-cli"
+path = "src/bin/main.rs"
+
+[dependencies]
+anyhow = "1.0.97"
+base64 = "0.22.1"
+ccatoken = { git = "https://github.com/veraison/rust-ccatoken", rev = "6d5b8db9" }
+ciborium = "0.2.2"
+clap = { version = "4.5.32", features = ["derive"] }
+clap-verbosity-flag = "3.0.3"
+corim-rs = { git = "https://github.com/veraison/corim-rs", rev = "70893b6", features = ["openssl"] }
+cose-rust = { version = "0.1.7", features = ["serde_json"] }
+ear = { git = "https://github.com/veraison/rust-ear", rev = "15184e9a" }
+env_logger = { version = "0.11.8", features = ["kv"] }
+jsonwebtoken = "9.3.1"
+log = { version = "0.4.27", features = ["kv", "std"] }
+regorus = "0.4.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["raw_value"] }
+
+[dev-dependencies]
+ciborium = "0.2.2"
+serde_json = "1.0.140"
+test-case = "3.3.1"

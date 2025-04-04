@@ -1,0 +1,55 @@
+package policy
+
+NO_CLAIM := 0
+UNEXECTED_EVIDENCE := 1
+
+AFFIRMING := 2
+WARNING := 32
+CONTRAINDICATED := 96
+
+RECOGNIZED_INSTANCE := 2
+UNTRUSTWORTHY_INSTANCE := 96
+UNRECOGNIZED_INSTANCE := 97
+
+APPROVED_CONFIG := 2
+SAFE_CONFIG := 3
+UNSAFE_CONFIG := 32
+UNSUPPORTABLE_CONFIG := 96
+
+APPROVED_RT := 2
+APPROVED_BOOT := 3
+UNSAFE_RT := 32
+UNRECOGNIZED_RT := 33
+CONTRAINDICATED_RT := 96
+
+APPROVED_FS := 2
+UNRECOGNIZED_FS := 32
+CONTRAINDICATED_FS := 96
+
+GENUINE_HW := 2
+UNSAFE_HW := 32
+CONTRAINDICATED_HW := 96
+UNRECOGNIZED_HW := 97
+
+ENCRYPTED_RT := 2
+ISOLATED_RT := 32
+VISIBLE_RT := 96
+
+HW_ENCRYPTED_SECRETS := 2
+SW_ENCRYPTED_SECRETS := 32
+UNENCRYPTED_SECRETS := 96
+
+TRUSTED_SOURCES := 2
+UNTRUSTED_SOURCES := 32
+CONTRAINDICATED_SOURCES := 96
+
+default status = 0
+default instance_identity = 0
+default configuration = 0
+default executables = 0
+default file_system = 0
+default hardware = 0
+default runtime_opaque = 0
+default storage_opaque = 0
+default sourced_data = 0
+default policy_claims = {}
