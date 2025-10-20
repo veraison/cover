@@ -1,9 +1,9 @@
 # cover
 
 Cover (COrim VERifier) is an implementation of CoRIM-based verifier as outline in CoRIM draft
-spec (rev 8.) Section 9[1]. It attempts follow the outlined algorithm up to phase 4 (ACS
+spec (rev 8.) Section 9 \[[1]\]. It attempts follow the outlined algorithm up to phase 4 (ACS
 generation). In lieu of subsequent phases, it uses a Rego-based policy engine for policy
-evaluation, and generates an attestation result in EAR[2] format.
+evaluation, and generates an attestation result in EAR \[[2]\] format.
 
 This implementation is intended as a Proof-of-Concept only. It has the following limitations:
 - Arm CCA is the only attestation scheme that is currently implemented.
@@ -16,14 +16,14 @@ The verification flow proceeds as follows.
   into the "corim store" as RV (reference values), EV (endorsed values), and EVS (endorsed
   values series) relations.
 - The signature on the evidence is verified using a trust anchor obtained from the corim store
-  based on an identifier inside he evidence. This is scheme-specific. For CCA, the instance ID
+  based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
   is used. Evidence claims are then extracted as ECT (environment-claims tuple) records.
 - The evidence ECTs are then matched to the relations in the corim store. This results in the
   ACS (appraisal claims set) -- a vector of ECT records containing evidence claims and matched
   reference values and endorsements.
 - The ACS is used as an input into the policy engine along with scheme-specific policies. Each
-  policy results in an appraisal containing an AR4SI[3] trust vector.
-- The appraisals are added to an attestation result in EAR[2] format.
+  policy results in an appraisal containing an AR4SI \[[3]\] trust vector.
+- The appraisals are added to an attestation result in EAR \[[2]\] format.
 
 [1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-08.html#name-example-verifier-algorithm
 [2]: https://www.ietf.org/archive/id/draft-fv-rats-ear-05.html
@@ -85,7 +85,7 @@ Verification flow consists of the following components:
 
 ## CLI
 
- This create includes the `cover-cli` executable that can be used to run the verifier,
+ This crate includes the `cover-cli` executable that can be used to run the verifier,
  producing an EAR serialized as JSON.
 
 ```bash
