@@ -3,8 +3,10 @@ use std::fmt::Display;
 use std::vec::IntoIter;
 
 use corim_rs::{
-    ConciseMidTag, ConciseTagTypeChoice, Corim, CoseKeyOwner, CryptoKeyTypeChoice, ExtensionValue,
-    Label, MeasurementValuesMapBuilder, OpensslSigner, ProfileTypeChoice,
+    AttestKeyTripleRecord, ConciseMidTag, ConciseTagTypeChoice,
+    ConditionalEndorsementSeriesTripleRecord, ConditionalEndorsementTripleRecord, Corim,
+    CoseKeyOwner, CryptoKeyTypeChoice, EndorsedTripleRecord, ExtensionValue, Label,
+    MeasurementValuesMapBuilder, OpensslSigner, ProfileTypeChoice, ReferenceTripleRecord,
 };
 use serde::{Deserialize, Serialize, de};
 
@@ -154,11 +156,199 @@ pub struct RvRelation<'a> {
     pub addition: Ect<'a>,
 }
 
+impl<'a> RvRelation<'a> {
+    pub fn from_reference_triple_record<'b>(
+        rvt: &ReferenceTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+    ) -> Result<RvRelation<'a>> {
+        let condition: Ect<'a> = EctBuilder::new()
+            .cm_type(CmType::ReferenceValues)
+            .environment(rvt.ref_env.to_fully_owned())
+            .element_list(
+                rvt.ref_claims
+                    .iter()
+                    .map(|e| ElementMap {
+                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                        mval: e.mval.to_fully_owned(),
+                    })
+                    .collect(),
+            )
+            .build()?;
+
+        let addition: Ect<'a> = match profile {
+            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
+            None => EctBuilder::new(),
+        }
+        .cm_type(CmType::ReferenceValues)
+        .environment(rvt.ref_env.to_fully_owned())
+        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+        .build()?;
+
+        Ok(RvRelation {
+            condition,
+            addition,
+        })
+    }
+}
+
 /// Endorsed value relation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvRelation<'a> {
     pub condition: Vec<Ect<'a>>,
     pub addition: Vec<Ect<'a>>,
+}
+
+impl<'a> EvRelation<'a> {
+    pub fn from_endorsed_triple_record<'b>(
+        evt: &EndorsedTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+    ) -> Result<EvRelation<'a>> {
+        let condition = EctBuilder::new()
+            .cm_type(CmType::Endorsements)
+            .environment(evt.condition.to_fully_owned())
+            .element_list(
+                evt.endorsement
+                    .iter()
+                    .map(|e| ElementMap {
+                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                        mval: e.mval.to_fully_owned(),
+                    })
+                    .collect(),
+            )
+            .build()?;
+
+        let addition = match profile {
+            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
+            None => EctBuilder::new(),
+        }
+        .cm_type(CmType::Endorsements)
+        .environment(evt.condition.to_fully_owned())
+        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+        .build()?;
+
+        Ok(EvRelation {
+            condition: vec![condition],
+            addition: vec![addition],
+        })
+    }
+
+    pub fn from_conditional_endorsement_triple_record<'b>(
+        cet: &ConditionalEndorsementTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+    ) -> Result<EvRelation<'a>> {
+        let condition: Result<Vec<Ect>> = cet
+            .conditions
+            .iter()
+            .map(|cond| {
+                EctBuilder::new()
+                    .cm_type(CmType::Endorsements)
+                    .environment(cond.environment.to_fully_owned())
+                    .element_list(
+                        cond.claims_list
+                            .iter()
+                            .map(|e| ElementMap {
+                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                                mval: e.mval.to_fully_owned(),
+                            })
+                            .collect(),
+                    )
+                    .build()
+            })
+            .collect();
+
+        if let Err(err) = condition {
+            return Err(Error::custom(format!("CET condition error: {}", err)));
+        }
+
+        let addition: Result<Vec<Ect>> = cet
+            .endorsements
+            .iter()
+            .map(|end| {
+                match profile {
+                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
+                    None => EctBuilder::new(),
+                }
+                .cm_type(CmType::Endorsements)
+                .environment(end.condition.to_fully_owned())
+                .element_list(
+                    end.endorsement
+                        .iter()
+                        .map(|e| ElementMap {
+                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                            mval: e.mval.to_fully_owned(),
+                        })
+                        .collect(),
+                )
+                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+                .build()
+            })
+            .collect();
+
+        if let Err(err) = addition {
+            return Err(Error::custom(format!("CET addition error: {}", err)));
+        }
+
+        Ok(EvRelation {
+            condition: condition.unwrap(),
+            addition: addition.unwrap(),
+        })
+    }
+
+    pub fn from_attest_key_triple_record<'b>(
+        akt: &AttestKeyTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+    ) -> Result<EvRelation<'a>> {
+        let condition = match &akt.conditions {
+            Some(cond) => match &cond.authorized_by {
+                Some(auth_by) => EctBuilder::new()
+                    .authority(auth_by.iter().map(|c| c.to_fully_owned()).collect()),
+                None => EctBuilder::new(),
+            },
+            None => EctBuilder::new(),
+        }
+        .cm_type(CmType::Endorsements)
+        .environment(akt.environment.to_fully_owned())
+        .element_list(
+            akt.key_list
+                .iter()
+                .map(|e| ElementMap {
+                    mkey: match &akt.conditions {
+                        Some(cond) => cond.mkey.as_ref().map(|k| k.to_fully_owned()),
+                        None => None,
+                    },
+                    mval: MeasurementValuesMapBuilder::new()
+                        .add_extension(
+                            INTERP_KEYS_EXT_ID,
+                            TypedCryptoKey {
+                                key: e.to_fully_owned(),
+                                key_type: KeyType::AttestKey,
+                            }
+                            .into(),
+                        )
+                        .build()
+                        .unwrap(),
+                })
+                .collect(),
+        )
+        .build()?;
+
+        let addition = match profile {
+            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
+            None => EctBuilder::new(),
+        }
+        .cm_type(CmType::Endorsements)
+        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+        .build()?;
+
+        Ok(EvRelation {
+            condition: vec![condition],
+            addition: vec![addition],
+        })
+    }
 }
 
 /// Endorsed value series entry.
@@ -173,6 +363,81 @@ pub struct EvsRelationSeriesEntry<'a> {
 pub struct EvsRelation<'a> {
     pub condition: Vec<Ect<'a>>,
     pub series: Vec<EvsRelationSeriesEntry<'a>>,
+}
+
+impl<'a> EvsRelation<'a> {
+    pub fn from_conditional_endorsement_series_triple_record<'b>(
+        cest: &ConditionalEndorsementSeriesTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+    ) -> Result<EvsRelation<'a>> {
+        let condition = EctBuilder::new()
+            .cm_type(CmType::Endorsements)
+            .environment(cest.condition.environment.to_fully_owned())
+            .element_list(
+                cest.condition
+                    .claims_list
+                    .iter()
+                    .map(|e| ElementMap {
+                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                        mval: e.mval.to_fully_owned(),
+                    })
+                    .collect(),
+            )
+            .build()?;
+
+        let series: Result<Vec<EvsRelationSeriesEntry>> = cest
+            .series
+            .iter()
+            .map(|csr| {
+                let selection: Ect<'a> = EctBuilder::new()
+                    .cm_type(CmType::Endorsements)
+                    .environment(cest.condition.environment.to_fully_owned())
+                    .element_list(
+                        csr.selection
+                            .iter()
+                            .map(|e| ElementMap {
+                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                                mval: e.mval.to_fully_owned(),
+                            })
+                            .collect(),
+                    )
+                    .build()?;
+
+                let addition: Ect<'a> = match profile {
+                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
+                    None => EctBuilder::new(),
+                }
+                .cm_type(CmType::Endorsements)
+                .environment(cest.condition.environment.to_fully_owned())
+                .element_list(
+                    csr.addition
+                        .iter()
+                        .map(|e| ElementMap {
+                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
+                            mval: e.mval.to_fully_owned(),
+                        })
+                        .collect(),
+                )
+                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+                .build()?;
+
+                Ok(EvsRelationSeriesEntry {
+                    selection: vec![selection],
+                    addition: vec![addition],
+                })
+            })
+            .collect();
+
+        if let Err(err) = series {
+            return Err(Error::custom(format!("CEST series error: {}", err)));
+        }
+
+        Ok(EvsRelation {
+            condition: vec![condition],
+            series: series.unwrap(),
+        })
+    }
 }
 
 /// A store of reference and endorsed values extracted from CoRIMs.
@@ -241,257 +506,48 @@ impl<'a> CorimParseResult<'a> {
 
         if let Some(rvts) = &comid.triples.reference_triples {
             for rvt in rvts {
-                let condition: Ect<'a> = EctBuilder::new()
-                    .cm_type(CmType::ReferenceValues)
-                    .environment(rvt.ref_env.to_fully_owned())
-                    .element_list(
-                        rvt.ref_claims
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()?;
-
-                let addition: Ect<'a> = match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::ReferenceValues)
-                .environment(rvt.ref_env.to_fully_owned())
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()?;
-
-                self.rv_list.push(RvRelation {
-                    condition,
-                    addition,
-                });
-
+                self.rv_list.push(RvRelation::from_reference_triple_record(
+                    rvt, profile, authority,
+                )?);
                 updated = true;
             }
         }
 
         if let Some(evts) = &comid.triples.endorsed_triples {
             for evt in evts {
-                let condition = EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(evt.condition.to_fully_owned())
-                    .element_list(
-                        evt.endorsement
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()?;
-
-                let addition = match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(evt.condition.to_fully_owned())
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()?;
-
-                self.ev_list.push(EvRelation {
-                    condition: vec![condition],
-                    addition: vec![addition],
-                });
-
+                self.ev_list.push(EvRelation::from_endorsed_triple_record(
+                    evt, profile, authority,
+                )?);
                 updated = true;
             }
         }
 
         if let Some(cets) = &comid.triples.conditional_endorsement_triples {
             for cet in cets {
-                let condition: Result<Vec<Ect>> = cet
-                    .conditions
-                    .iter()
-                    .map(|cond| {
-                        EctBuilder::new()
-                            .cm_type(CmType::Endorsements)
-                            .environment(cond.environment.to_fully_owned())
-                            .element_list(
-                                cond.claims_list
-                                    .iter()
-                                    .map(|e| ElementMap {
-                                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                        mval: e.mval.to_fully_owned(),
-                                    })
-                                    .collect(),
-                            )
-                            .build()
-                    })
-                    .collect();
-
-                if let Err(err) = condition {
-                    return Err(Error::custom(format!("CET condition error: {}", err)));
-                }
-
-                let addition: Result<Vec<Ect>> = cet
-                    .endorsements
-                    .iter()
-                    .map(|end| {
-                        match profile {
-                            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                            None => EctBuilder::new(),
-                        }
-                        .cm_type(CmType::Endorsements)
-                        .environment(end.condition.to_fully_owned())
-                        .element_list(
-                            end.endorsement
-                                .iter()
-                                .map(|e| ElementMap {
-                                    mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                    mval: e.mval.to_fully_owned(),
-                                })
-                                .collect(),
-                        )
-                        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                        .build()
-                    })
-                    .collect();
-
-                if let Err(err) = addition {
-                    return Err(Error::custom(format!("CET addition error: {}", err)));
-                }
-
-                self.ev_list.push(EvRelation {
-                    condition: condition.unwrap(),
-                    addition: addition.unwrap(),
-                });
-
+                self.ev_list
+                    .push(EvRelation::from_conditional_endorsement_triple_record(
+                        cet, profile, authority,
+                    )?);
                 updated = true;
             }
         }
 
         if let Some(cests) = &comid.triples.conditional_endorsement_series_triples {
             for cest in cests {
-                let condition = EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(cest.condition.environment.to_fully_owned())
-                    .element_list(
-                        cest.condition
-                            .claims_list
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()?;
-
-                let series: Result<Vec<EvsRelationSeriesEntry>> = cest
-                    .series
-                    .iter()
-                    .map(|csr| {
-                        let selection: Ect<'a> = EctBuilder::new()
-                            .cm_type(CmType::Endorsements)
-                            .environment(cest.condition.environment.to_fully_owned())
-                            .element_list(
-                                csr.selection
-                                    .iter()
-                                    .map(|e| ElementMap {
-                                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                        mval: e.mval.to_fully_owned(),
-                                    })
-                                    .collect(),
-                            )
-                            .build()?;
-
-                        let addition: Ect<'a> = match profile {
-                            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                            None => EctBuilder::new(),
-                        }
-                        .cm_type(CmType::Endorsements)
-                        .environment(cest.condition.environment.to_fully_owned())
-                        .element_list(
-                            csr.addition
-                                .iter()
-                                .map(|e| ElementMap {
-                                    mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                    mval: e.mval.to_fully_owned(),
-                                })
-                                .collect(),
-                        )
-                        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                        .build()?;
-
-                        Ok(EvsRelationSeriesEntry {
-                            selection: vec![selection],
-                            addition: vec![addition],
-                        })
-                    })
-                    .collect();
-
-                if let Err(err) = series {
-                    return Err(Error::custom(format!("CEST series error: {}", err)));
-                }
-
-                self.evs_list.push(EvsRelation {
-                    condition: vec![condition],
-                    series: series.unwrap(),
-                });
-
+                self.evs_list.push(
+                    EvsRelation::from_conditional_endorsement_series_triple_record(
+                        cest, profile, authority,
+                    )?,
+                );
                 updated = true;
             }
         }
 
         if let Some(akts) = &comid.triples.attest_key_triples {
             for akt in akts {
-                let condition = match &akt.conditions {
-                    Some(cond) => match &cond.authorized_by {
-                        Some(auth_by) => EctBuilder::new()
-                            .authority(auth_by.iter().map(|c| c.to_fully_owned()).collect()),
-                        None => EctBuilder::new(),
-                    },
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(akt.environment.to_fully_owned())
-                .element_list(
-                    akt.key_list
-                        .iter()
-                        .map(|e| ElementMap {
-                            mkey: match &akt.conditions {
-                                Some(cond) => cond.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                None => None,
-                            },
-                            mval: MeasurementValuesMapBuilder::new()
-                                .add_extension(
-                                    INTERP_KEYS_EXT_ID,
-                                    TypedCryptoKey {
-                                        key: e.to_fully_owned(),
-                                        key_type: KeyType::AttestKey,
-                                    }
-                                    .into(),
-                                )
-                                .build()
-                                .unwrap(),
-                        })
-                        .collect(),
-                )
-                .build()?;
-
-                let addition = match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()?;
-
-                self.ev_list.push(EvRelation {
-                    condition: vec![condition],
-                    addition: vec![addition],
-                });
-
+                self.ev_list.push(EvRelation::from_attest_key_triple_record(
+                    akt, profile, authority,
+                )?);
                 updated = true;
             }
         }
