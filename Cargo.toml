@@ -2,6 +2,12 @@
 name = "cover"
 version = "0.0.1"
 edition = "2024"
+repository = "https://github.com/veraison/cover"
+readme = "README.md"
+description = "CoRIM verifier"
+license = "Apache-2.0"
+keywords = ["attestation", "verification", "veraison"]
+categories = ["command-line-utilities", "cryptography", "security"]
 
 [lib]
 name = "cover"
