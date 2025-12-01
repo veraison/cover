@@ -65,7 +65,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         scheme_name: &str,
         evidence: &[u8],
         nonce: Option<&[u8]>,
-    ) -> Result<Verification> {
+    ) -> Result<Verification<'_>> {
         let scheme = self
             .get_scheme(scheme_name)
             .ok_or(Error::scheme_not_found(scheme_name))?;
@@ -216,24 +216,23 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
         for ev in self.corims.iter_ev() {
             for cond in &ev.condition {
-                if cond.environment.as_ref().unwrap() == id {
-                    if let Some(elts) = &cond.element_list {
-                        for elt in elts {
-                            if let Some(exts) = &elt.mval.extensions {
-                                if let Some(interp_keys_ext) = exts.get(INTERP_KEYS_EXT_ID.into()) {
-                                    let interp_key =
-                                        TypedCryptoKey::try_from(interp_keys_ext).unwrap();
-                                    if interp_key.key_type == KeyType::AttestKey {
-                                        if found.is_some() {
-                                            return Err(Error::custom(format!(
-                                                "duplicate trust anchor for {:?}",
-                                                id
-                                            )));
-                                        }
-
-                                        found = Some(interp_key.key)
-                                    }
+                if cond.environment.as_ref().unwrap() == id
+                    && let Some(elts) = &cond.element_list
+                {
+                    for elt in elts {
+                        if let Some(exts) = &elt.mval.extensions
+                            && let Some(interp_keys_ext) = exts.get(INTERP_KEYS_EXT_ID.into())
+                        {
+                            let interp_key = TypedCryptoKey::try_from(interp_keys_ext).unwrap();
+                            if interp_key.key_type == KeyType::AttestKey {
+                                if found.is_some() {
+                                    return Err(Error::custom(format!(
+                                        "duplicate trust anchor for {:?}",
+                                        id
+                                    )));
                                 }
+
+                                found = Some(interp_key.key)
                             }
                         }
                     }
@@ -324,7 +323,7 @@ mod test {
         let verifier = Verifier::new(store, schemes);
         let result = verifier.verify("cca", evidence.as_slice(), None).unwrap();
 
-        for (_, appraisal) in &result.ear.submods {
+        for appraisal in result.ear.submods.values() {
             assert_eq!(appraisal.status.to_string(), "affirming");
         }
     }
