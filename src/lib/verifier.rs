@@ -216,7 +216,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
         for ev in self.corims.iter_ev() {
             for cond in &ev.condition {
-                if cond.environment.as_ref().unwrap() == id
+                if cond.environment.as_ref().unwrap().matches(id)
                     && let Some(elts) = &cond.element_list
                 {
                     for elt in elts {
