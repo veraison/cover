@@ -33,6 +33,13 @@ log = { version = "0.4.27", features = ["kv", "std"] }
 regorus = "0.4.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["raw_value"] }
+pem = "3.0.6"
+picky-asn1-der = "0.5.4"
+picky-asn1-x509 = "0.15.2"
+elliptic-curve = { version = "0.13.8", features = ["arithmetic"] }
+p256 = "0.13.2"
+p384 = "0.13.1"
+p521 = "0.13.3"
 
 [dev-dependencies]
 ciborium = "0.2.2"

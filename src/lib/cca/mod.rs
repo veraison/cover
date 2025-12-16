@@ -98,6 +98,11 @@ impl Scheme for CcaScheme {
     ) -> Result<Vec<Ect<'a>>, Error> {
         let key_bytes: Vec<u8> = match trust_anchor {
             CryptoKeyTypeChoice::Bytes(bytes) => Ok(bytes.into()),
+            CryptoKeyTypeChoice::PkixBase64Key(b64key) => {
+                let pem_bytes = b64key.as_bytes();
+                let jwk_string = crate::util::pem_spki_to_jwk_string(pem_bytes)?;
+                Ok(jwk_string.into())
+            }
             _ => Err(Error::custom(format!(
                 "invalid trust anchor type: {:?}",
                 trust_anchor
