@@ -393,7 +393,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 [[package]]
 name = "corim-rs"
 version = "0.1.0"
-source = "git+https://github.com/veraison/corim-rs?rev=70893b6#70893b6ed402c73228f916cb0e906df2803fbb9d"
+source = "git+https://github.com/veraison/corim-rs#8d297d090521e1a8ee40c6a8bda97ff708e7302c"
 dependencies = [
  "base64 0.22.1",
  "ciborium",

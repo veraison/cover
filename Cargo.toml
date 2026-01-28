@@ -24,7 +24,7 @@ ccatoken = { git = "https://github.com/veraison/rust-ccatoken", rev = "6d5b8db9"
 ciborium = "0.2.2"
 clap = { version = "4.5.32", features = ["derive"] }
 clap-verbosity-flag = "3.0.3"
-corim-rs = { git = "https://github.com/veraison/corim-rs", rev = "70893b6", features = ["openssl"] }
+corim-rs = { git = "https://github.com/veraison/corim-rs", features = ["openssl"] }
 cose-rust = { version = "0.1.7", features = ["serde_json"] }
 ear = { git = "https://github.com/veraison/rust-ear", rev = "15184e9a" }
 env_logger = { version = "0.11.8", features = ["kv"] }
