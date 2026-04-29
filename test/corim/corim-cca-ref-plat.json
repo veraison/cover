@@ -28,17 +28,14 @@
               {
                 "class": {
                   "class-id": {
-                    "tag": 600,
-                    "value": "[base64]:f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
+                    "type": "bytes",
+                    "value": "f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
                   }
                 }
               },
               [
                 {
-                  "mkey": {
-                    "tag": 602,
-                    "value": "cfg v1.0.0"
-                  },
+                  "mkey": "cca.platform-config",
                   "mval": {
                     "raw-value": {
                       "type": "bytes",
@@ -47,62 +44,74 @@
                   }
                 },
                 {
-                  "mkey": {
-                    "tag": 601,
-                    "value": {
-                      "1": "BL",
-                      "4": "3.4.2",
-                      "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
-                    }
-                  },
+                  "mkey": "cca.software-component",
                   "mval": {
+                    "name": "BL",
+                    "version": {
+                      "version": "3.4.2"
+                    },
                     "digests": [
                       "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                    ],
+                    "cryptokeys": [
+                      {
+                        "type": "bytes",
+                        "value": "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                      }
                     ]
                   }
                 },
                 {
-                  "mkey": {
-                    "tag": 601,
-                    "value": {
-                      "1": "M1",
-                      "4": "1.2",
-                      "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
-                    }
-                  },
+                  "mkey": "cca.software-component",
                   "mval": {
+                    "name": "M1",
+                    "version": {
+                      "version": "1.2"
+                    },
                     "digests": [
                       "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                    ],
+                    "cryptokeys": [
+                      {
+                        "type": "bytes",
+                        "value": "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                      }
                     ]
                   }
                 },
                 {
-                  "mkey": {
-                    "tag": 601,
-                    "value": {
-                      "1": "M2",
-                      "4": "1.2.3",
-                      "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
-                    }
-                  },
+                  "mkey": "cca.software-component",
                   "mval": {
+                    "name": "M2",
+                    "version": {
+                      "version": "1.2.3"
+                    },
                     "digests": [
                       "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                    ],
+                    "cryptokeys": [
+                      {
+                        "type": "bytes",
+                        "value": "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                      }
                     ]
                   }
                 },
                 {
-                  "mkey": {
-                    "tag": 601,
-                    "value": {
-                      "1": "M3",
-                      "4": "1",
-                      "5": "[base64]:BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
-                    }
-                  },
+                  "mkey": "cca.software-component",
                   "mval": {
+                    "name": "M3",
+                    "version": {
+                      "version": "1"
+                    },
                     "digests": [
                       "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                    ],
+                    "cryptokeys": [
+                      {
+                        "type": "bytes",
+                        "value": "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+                      }
                     ]
                   }
                 }

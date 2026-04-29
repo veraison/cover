@@ -2,10 +2,6 @@ package policy
 
 CLAIM_RAW_INT := "-1"
 
-TAG_PSA_IMPL_ID := 600
-TAG_PSA_REFVAL_ID := 601
-TAG_CCA_PLAT_CONFIG := 602
-
 LC_UNKNOWN := 0
 LC_ASSEMBLY_AND_TEST := 1
 LC_CCA_ROT_PROVISIONING := 2
@@ -16,7 +12,7 @@ LC_DECOMMISSIONED := 6
 
 platform contains ect if {
   ect = input[_]
-  ect.environment.class["class-id"].tag == TAG_PSA_IMPL_ID
+  ect.environment.class["class-id"].type == "bytes"
 }
 
 refvals contains ect if {
@@ -51,27 +47,25 @@ instance_identity := RECOGNIZED_INSTANCE if {
 
 configuration := APPROVED_CONFIG if {
   ref = refvals[_]["element-list"][_]
-  ref.mkey.tag == TAG_CCA_PLAT_CONFIG
+  ref.mkey == "cca.platform-config"
 
   ev = evidence[_]["element-list"][_]
-  ev.mkey.tag == TAG_CCA_PLAT_CONFIG
+  ev.mkey == "cca.platform-config"
 
-  ref.mkey.value == ev.mkey.value
   ref.mval == ev.mval
 } else := UNSAFE_CONFIG
 
 ev_sw contains ev if {
   ev := evidence[_]["element-list"][_]
-  ev.mkey.tag == TAG_PSA_REFVAL_ID
+  ev.mkey == "cca.software-component"
 }
 
 executables := APPROVED_BOOT if {
   ev_sw[_]
   every ev in ev_sw {
     ref = refvals[_]["element-list"][_]
-    ref.mkey.tag == TAG_PSA_REFVAL_ID
+    ref.mkey == "cca.software-component"
 
-    ref.mkey.value == ev.mkey.value
     ref.mval == ev.mval
   }
 } else := UNRECOGNIZED_RT

@@ -1,8 +1,12 @@
 package policy
 
 realm contains ect if {
+  # note: with the updated CCA profile, we no longer have a good way
+  # of separting realm from platform elements as both environments
+  # now solely use class-id. However, since we're accessing all
+  # values by their mkey, this shouldn't matter; so we simply treat
+  # the entire input as realm.
   ect = input[_]
-  ect.environment.instance.type == "bytes"
 }
 
 refvals contains ect if {
@@ -20,29 +24,39 @@ evidence contains ect if {
 instance_identity := RECOGNIZED_INSTANCE
 
 rim_matched if {
-  ref := refvals[_]["element-list"][_]["mval"]["integrity-registers"][`"rim"`]
-  ev := evidence[_]["element-list"][_]["mval"]["integrity-registers"][`"rim"`]
+  ref := refvals[_]["element-list"][_]
+  ref.mkey == "cca.rim"
+  ev := evidence[_]["element-list"][_]
+  ev.mkey == "cca.rim"
+
   ref == ev
 }
 
-# TODO: figure out what this should look like (can't find an example of it
-# being represented in a CoMID)
-pv_matched := true
+pv_matched if {
+  ref := refvals[_]["element-list"][_]
+  ref.mkey == "cca.rpv"
+  ev := evidence[_]["element-list"][_]
+  ev.mkey == "cca.rpv"
+
+  ref == ev
+}
 
 ref_rems contains rem if {
+  rv := refvals[_]["element-list"][_]
   rem := {
-    "name": name,
-    "value": refvals[_]["element-list"][_]["mval"]["integrity-registers"][name]["value"]
+    "name": rv.mkey,
+    "value": rv.mval,
   }
-  name != "rim"
+  rv.mkey != "cca.rim"
 }
 
 ev_rems contains rem if {
+  rv := evidence[_]["element-list"][_]
   rem := {
-    "name": name,
-    "value": evidence[_]["element-list"][_]["mval"]["integrity-registers"][name]["value"]
+    "name": rv.mkey,
+    "value": rv.mval,
   }
-  name != "rim"
+  startswith(rv.mkey, "cca.rem")
 }
 
 rems_matched if {

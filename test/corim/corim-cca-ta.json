@@ -28,8 +28,8 @@
               {
                 "class": {
                   "class-id": {
-                    "tag": 600,
-                    "value": "[base64]:f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
+                    "type": "bytes",
+                    "value": "f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAUFgAAAAAAAA"
                   }
                 },
                 "instance": {
