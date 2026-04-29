@@ -26,33 +26,63 @@
           "reference-triples": [
             [
               {
-                  "instance": {
+                "class": {
+                  "class-id": {
                     "type": "bytes",
                     "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
                   }
+                }
               },
               [
-                  {
-                    "mval": {
-                      "integrity-registers": {
-                        "\"rem0\"": [
-                          "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                        ],
-                        "\"rem1\"": [
-                          "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                        ],
-                        "\"rem2\"": [
-                          "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                        ],
-                        "\"rem3\"": [
-                          "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                        ],
-                        "\"rim\"": [
-                          "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-                        ]
-                      }
+                {
+                  "mkey": "cca.rim",
+                  "mval": {
+                    "digests": [
+                      "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                    ]
+                  }
+                },
+                {
+                  "mkey": "cca.rem0",
+                  "mval": {
+                    "digests": [
+                      "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                    ]
+                  }
+                },
+                {
+                  "mkey": "cca.rem1",
+                  "mval": {
+                    "digests": [
+                      "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                    ]
+                  }
+                },
+                {
+                  "mkey": "cca.rem2",
+                  "mval": {
+                    "digests": [
+                      "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                    ]
+                  }
+                },
+                {
+                  "mkey": "cca.rem3",
+                  "mval": {
+                    "digests": [
+                      "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                    ]
+                  }
+                },
+                {
+                  "mkey": "cca.rpv",
+                  "mval": {
+                    "raw-value": {
+                      "type": "bytes",
+                      "value": "VGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVyIDEzIGxhenkgZG9ncy5UaGUgcXVpY2sgYnJvd24gZm94IA"
                     }
                   }
+                }
               ]
             ]
           ]

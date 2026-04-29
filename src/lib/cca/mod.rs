@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::borrow::Cow;
 
 use ccatoken::{
     store::{Cpak, ITrustAnchorStore, MemoTrustAnchorStore},
@@ -7,13 +7,13 @@ use ccatoken::{
 use corim_rs::{
     CryptoKeyTypeChoice, EnvironmentMap,
     core::{
-        Bytes, Digest, ExtensionValue, HashAlgorithm, Label, RawValueType, RawValueTypeChoice,
-        TaggedBytes, TaggedUeidType, Text, UeidType, Ulabel, Uri,
+        Bytes, Digest, ExtensionValue, HashAlgorithm, RawValueType, RawValueTypeChoice,
+        TaggedBytes, TaggedUeidType, Text, UeidType, Uri,
     },
     corim::ProfileTypeChoice,
     triples::{
         ClassIdTypeChoice, ClassMapBuilder, EnvironmentMapBuilder, InstanceIdTypeChoice,
-        IntegrityRegisters, MeasurementValuesMapBuilder,
+        MeasurementValuesMapBuilder,
     },
 };
 use ear::claim::TRUSTWORTHY_INSTANCE;
@@ -75,12 +75,9 @@ impl Scheme for CcaScheme {
         EnvironmentMapBuilder::new()
             .class(
                 ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Extension(ExtensionValue::Tag(
-                        PSA_IMPL_ID_TAG,
-                        Box::new(ExtensionValue::Bytes(Bytes::from(
-                            evidence.platform_claims.impl_id.as_slice(),
-                        ))),
-                    )))
+                    .class_id(ClassIdTypeChoice::Bytes(
+                        evidence.platform_claims.impl_id.as_slice().into(),
+                    ))
                     .build()
                     .unwrap(),
             )
@@ -192,10 +189,7 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
         EnvironmentMapBuilder::default()
             .class(
                 ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Extension(ExtensionValue::Tag(
-                        PSA_IMPL_ID_TAG,
-                        Box::new(ExtensionValue::Bytes(Bytes::from(plat.impl_id.as_slice()))),
-                    )))
+                    .class_id(ClassIdTypeChoice::Bytes(plat.impl_id.as_slice().into()))
                     .build()
                     .unwrap(),
             )
@@ -210,12 +204,7 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
     let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg.as_str()).map_err(Error::custom)?;
 
     let cfg_element = ElementMap {
-        mkey: Some(corim_rs::triples::MeasuredElementTypeChoice::Extension(
-            ExtensionValue::Tag(
-                CCA_CONFIG_TAG,
-                Box::new(ExtensionValue::Text("cfg v1.0.0".into())),
-            ),
-        )),
+        mkey: Some("cca.platform-config".into()),
         mval: MeasurementValuesMapBuilder::default()
             .raw(RawValueType {
                 raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
@@ -257,43 +246,34 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
     ect.add_element(lifecycle_elt);
 
     for sw_comp in plat.sw_components.iter() {
-        let mut id_map: BTreeMap<Label, ExtensionValue> = BTreeMap::new();
+        let mut mval_builder = MeasurementValuesMapBuilder::default()
+            .cryptokeys(vec![CryptoKeyTypeChoice::Bytes(
+                sw_comp.signer_id.clone().as_slice().into(),
+            )])
+            .digest(vec![Digest {
+                alg: match &sw_comp.hash_alg {
+                    Some(cca_alg) => {
+                        HashAlgorithm::try_from(cca_alg.as_str()).map_err(Error::custom)
+                    }
+                    None => Ok(plat_hash_alg.clone()),
+                }?,
+                val: sw_comp.mval.clone().into(),
+            }]);
 
         if let Some(mtyp) = &sw_comp.mtyp {
-            id_map.insert(
-                Label::Int(SWC_LABEL_LABEL.into()),
-                ExtensionValue::Text(mtyp.clone().into()),
-            );
+            mval_builder = mval_builder.name(mtyp.clone().into())
         }
 
         if let Some(version) = &sw_comp.version {
-            id_map.insert(
-                Label::Int(SWC_VERSION_LABEL.into()),
-                ExtensionValue::Text(version.clone().into()),
-            );
+            mval_builder = mval_builder.version(corim_rs::VersionMap {
+                version: version.clone().into(),
+                version_scheme: None,
+            })
         }
 
-        id_map.insert(
-            Label::Int(SWC_SIGNER_ID_LABEL.into()),
-            ExtensionValue::Bytes(sw_comp.signer_id.clone().into()),
-        );
-
         let element = ElementMap {
-            mkey: Some(corim_rs::triples::MeasuredElementTypeChoice::Extension(
-                ExtensionValue::Tag(PSA_REFVAL_ID_TAG, Box::new(ExtensionValue::Map(id_map))),
-            )),
-            mval: MeasurementValuesMapBuilder::default()
-                .digest(vec![Digest {
-                    alg: match &sw_comp.hash_alg {
-                        Some(cca_alg) => {
-                            HashAlgorithm::try_from(cca_alg.as_str()).map_err(Error::custom)
-                        }
-                        None => Ok(plat_hash_alg.clone()),
-                    }?,
-                    val: sw_comp.mval.clone().into(),
-                }])
-                .build()
-                .map_err(Error::custom)?,
+            mkey: Some("cca.software-component".into()),
+            mval: mval_builder.build().map_err(Error::custom)?,
         };
 
         ect.add_element(element);
@@ -307,9 +287,14 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
 
     ect.set_environment(
         EnvironmentMapBuilder::default()
-            .instance(InstanceIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
-                realm.rim.clone(),
-            ))))
+            .class(
+                ClassMapBuilder::default()
+                    .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
+                        realm.rim.clone(),
+                    ))))
+                    .build()
+                    .unwrap(),
+            )
             .build()
             .unwrap(),
     );
@@ -320,28 +305,39 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
 
     let hash_alg = HashAlgorithm::try_from(realm.hash_alg.as_str()).map_err(Error::custom)?;
 
-    let mut regs_map = BTreeMap::from([(
-        Ulabel::Text("rim".into()),
-        vec![Digest {
-            alg: hash_alg.clone(),
-            val: Bytes::from(realm.rim.as_slice()),
-        }],
-    )]);
+    ect.add_element(ElementMap {
+        mkey: Some("cca.rim".into()),
+        mval: MeasurementValuesMapBuilder::default()
+            .digest(vec![Digest {
+                alg: hash_alg.clone(),
+                val: realm.rim.clone().into(),
+            }])
+            .build()
+            .map_err(Error::custom)?,
+    });
 
     for (i, rem) in realm.rem.iter().enumerate() {
-        regs_map.insert(
-            Ulabel::Text(format!("rem{i}").into()),
-            vec![Digest {
-                alg: hash_alg.clone(),
-                val: Bytes::from(rem.as_slice()),
-            }],
-        );
+        ect.add_element(ElementMap {
+            mkey: Some(Cow::<str>::Owned(format!("cca.rem{i}")).into()),
+            mval: MeasurementValuesMapBuilder::default()
+                .digest(vec![Digest {
+                    alg: hash_alg.clone(),
+                    val: rem.clone().into(),
+                }])
+                .build()
+                .map_err(Error::custom)?,
+        });
     }
 
     ect.add_element(ElementMap {
-        mkey: None,
+        mkey: Some("cca.rpv".into()),
         mval: MeasurementValuesMapBuilder::default()
-            .integrity_registers(IntegrityRegisters(regs_map))
+            .raw(RawValueType {
+                raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
+                    realm.perso.clone().as_slice(),
+                ))),
+                raw_value_mask: None,
+            })
             .build()
             .map_err(Error::custom)?,
     });
