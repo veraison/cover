@@ -65,6 +65,7 @@ ignore = [
 # NOTE: This is a TEMPORARY recognition of the cbindgen use of clap+atty that
 # requires clap to update its dependencies
     #"RUSTSEC-2021-0145",
+    "RUSTSEC-2026-0009",
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
