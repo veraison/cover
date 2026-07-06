@@ -94,7 +94,8 @@ impl MemKeyStore {
 
 impl KeyStore for MemKeyStore {
     fn add(&mut self, kid: &[u8], key: &[u8]) -> Result<()> {
-        debug!("adding kid {:x?}", kid);
+        debug!("Key kid : \"{}\"", str::from_utf8(kid).unwrap());
+        debug!("Adding into Memory Key Store..");
         self.items.insert(kid.to_vec(), key.to_vec());
         Ok(())
     }
@@ -117,5 +118,61 @@ impl KeyStore for MemKeyStore {
 impl Default for MemKeyStore {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        path::PathBuf,
+        process,
+        time::{SystemTime, UNIX_EPOCH},
+        unreachable,
+    };
+
+    fn temp_dir() -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("cover-keystore-{unique}-{}", process::id()))
+    }
+
+    #[test]
+    fn mem_keystore_round_trips_values_and_removes_them() {
+        let mut store = MemKeyStore::new();
+
+        store.add(b"kid-1", b"secret-value").unwrap();
+        assert_eq!(store.get(b"kid-1").unwrap(), b"secret-value".as_slice());
+
+        store.delete(b"kid-1").unwrap();
+        assert!(matches!(store.get(b"kid-1"), Err(Error::KidNotFound(_))));
+    }
+
+    #[test]
+    fn fs_keystore_round_trips_values_and_removes_them() {
+        let dir = temp_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let mut store = FsKeyStore::create(dir.to_str().unwrap()).unwrap();
+
+        store.add(b"kid-1", b"secret-value").unwrap();
+        assert_eq!(store.get(b"kid-1").unwrap(), b"secret-value".as_slice());
+
+        store.delete(b"kid-1").unwrap();
+        assert!(store.get(b"kid-1").is_err());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn fs_keystore_create_rejects_missing_directory() {
+        let dir = temp_dir();
+        let res = FsKeyStore::create(dir.to_str().unwrap());
+        match res {
+            Err(err) => assert!(matches!(err, Error::Custom(_))),
+            Ok(_) => unreachable!(),
+        }
     }
 }

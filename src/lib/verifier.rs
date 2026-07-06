@@ -1,26 +1,28 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use base64::{self, Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use cmw::{CMW, Indicator, Mime, Monad};
 use corim_rs::{ConciseRimTypeChoice, CryptoKeyTypeChoice, EnvironmentMap};
-use ear::{Appraisal, Ear, Extensions, VerifierID};
+use ear::{Appraisal, EAR_PROFILE, Ear, VerifierID};
 
 use crate::{
-    corim::{CorimStore, INTERP_KEYS_EXT_ID, KeyType, TypedCryptoKey},
-    ect::Ect,
+    corim::CorimStore,
+    ect::{Ect, ElementEct},
     policy::{Policy, appraise},
     result::{Error, Result},
     scheme::Scheme,
 };
 
-/// A Verification is produced by the [Verifier] when verifying evidence.
+/// A VerificationResult is produced by the [Verifier] when verifying evidence.
 #[derive(Debug)]
-pub struct Verification<'a> {
+pub struct VerificationResult<'a> {
     /// The result of evidence verification in EAR (EAT Attestation Result) format.
     pub ear: Ear,
-    /// The ACS containing imputs used in [Policy] eveluation.
+    /// The ACS containing imputs used in [Policy] evaluation.
     pub acs: Vec<Ect<'a>>,
     /// [Policy] instances evaluated to generate the attestation result.
     pub policies: Vec<Policy>,
@@ -65,7 +67,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         scheme_name: &str,
         evidence: &[u8],
         nonce: Option<&[u8]>,
-    ) -> Result<Verification<'_>> {
+    ) -> Result<VerificationResult<'_>> {
         let scheme = self
             .get_scheme(scheme_name)
             .ok_or(Error::scheme_not_found(scheme_name))?;
@@ -76,42 +78,45 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
         let mut evidence_ects = scheme.validate_and_parse_evidence(evidence, &trust_anchor)?;
 
-        let mut ref_vals = self.match_reference_values(&evidence_ects);
-
         let mut acs = Vec::new();
         acs.append(&mut evidence_ects);
+
+        let mut ref_vals = self.match_reference_values(&acs);
         acs.append(&mut ref_vals);
 
         let mut ev_vals = self.match_endorsement_values(&acs);
-
         acs.append(&mut ev_vals);
+
+        acs = Ect::merge_similar_ects(acs);
 
         let acs_text = serde_json::to_string(&acs)?;
         let policies = scheme.get_policies();
 
-        let ear = Ear {
-            profile: scheme.profile(),
-            iat: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs()
-                .try_into()?,
-            vid: VerifierID {
-                build: format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
-                developer: "https://veraison-project.org".to_string(),
-            },
-            raw_evidence: Some(evidence.into()),
-            nonce: match nonce {
-                Some(bytes) => Some(URL_SAFE_NO_PAD.encode(bytes).try_into()?),
-                None => None,
-            },
-            submods: policies
-                .iter()
-                .map(|pol| Ok((pol.id.clone(), appraise(&acs_text, pol)?)))
-                .collect::<anyhow::Result<BTreeMap<String, Appraisal>>>()?,
-            extensions: Extensions::new(),
-        };
+        let mut ear = Ear::new();
 
-        Ok(Verification { ear, acs, policies })
+        ear.profile = EAR_PROFILE.to_string();
+        ear.iat = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_secs()
+            .try_into()?;
+        ear.vid = VerifierID {
+            build: format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
+            developer: "https://veraison-project.org".to_string(),
+        };
+        ear.raw_evidence = Some(CMW::Monad(Monad::new_media_type(
+            Mime::from_str("application/eat-cwt").unwrap(),
+            evidence.to_vec(),
+            Some(Indicator::EVIDENCE),
+        )?));
+        ear.nonce = match nonce {
+            Some(bytes) => Some(URL_SAFE_NO_PAD.encode(bytes).try_into()?),
+            None => None,
+        };
+        ear.submods = policies
+            .iter()
+            .map(|pol| Ok((pol.id.clone(), appraise(&acs_text, pol)?)))
+            .collect::<anyhow::Result<BTreeMap<String, Appraisal>>>()?;
+        Ok(VerificationResult { ear, acs, policies })
     }
 
     /// Add a CoRIM to the verifier's store.
@@ -121,7 +126,17 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
     /// Add CBOR-encoded CoRIM bytes to the verifier's store.
     pub fn add_corim_bytes(&mut self, corim: &'a [u8]) -> Result<()> {
-        self.corims.add_bytes(corim)
+        let corim = ConciseRimTypeChoice::from_cbor(corim)?;
+        let supported = self
+            .schemes
+            .values()
+            .any(|scheme| scheme.as_ref().supports_corim(&corim).unwrap_or(false));
+
+        if supported {
+            self.corims.add(&corim)
+        } else {
+            Ok(())
+        }
     }
 
     /// Add an attestation [Scheme] to the verifier.
@@ -130,42 +145,57 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         Ok(())
     }
 
-    fn match_reference_values(&self, acs: &Vec<Ect<'a>>) -> Vec<Ect<'a>> {
-        let mut res: Vec<Ect> = Vec::new();
+    fn match_reference_values(&self, acs: &[Ect<'a>]) -> Vec<Ect<'a>> {
+        let mut res: Vec<Ect<'a>> = Vec::new();
 
         for rv in self.corims.iter_rv() {
             for acs_ect in acs {
+                let Some(acs_ect) = acs_ect.as_element_ect() else {
+                    continue;
+                };
+
                 if !ect_match(&rv.condition, acs_ect) {
                     continue;
                 }
 
                 let mut addition = rv.addition.clone();
                 addition.element_list = acs_ect.element_list.clone();
-                res.push(addition);
+                res.push(Ect::from(addition));
             }
         }
 
         res
     }
 
-    fn match_endorsement_values(&self, act: &Vec<Ect<'a>>) -> Vec<Ect<'a>> {
-        let mut res: Vec<Ect> = Vec::new();
+    fn match_endorsement_values(&self, act: &[Ect<'a>]) -> Vec<Ect<'a>> {
+        let mut res: Vec<Ect<'a>> = Vec::new();
 
         for ev in self.corims.iter_ev() {
             let mut conditions_match = true;
 
             for cond in &ev.condition {
+                let mut matched = false;
+
                 for acs_ect in act {
-                    if !ect_match(cond, acs_ect) {
-                        conditions_match = false;
+                    let Some(acs_ect) = acs_ect.as_element_ect() else {
+                        continue;
+                    };
+
+                    if ect_match(cond, acs_ect) {
+                        matched = true;
                         break;
                     }
+                }
+
+                if !matched {
+                    conditions_match = false;
+                    break;
                 }
             }
 
             if conditions_match {
                 for add_ect in &ev.addition {
-                    res.push(add_ect.clone());
+                    res.push(Ect::from(add_ect.clone()));
                 }
             }
         }
@@ -180,29 +210,12 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
     fn get_trust_anchor(&self, id: &EnvironmentMap<'a>) -> Result<CryptoKeyTypeChoice<'a>> {
         let mut found: Option<CryptoKeyTypeChoice> = None;
 
-        for ev in self.corims.iter_ev() {
-            for cond in &ev.condition {
-                if cond.environment.as_ref().unwrap().matches(id)
-                    && let Some(elts) = &cond.element_list
-                {
-                    for elt in elts {
-                        if let Some(exts) = &elt.mval.extensions
-                            && let Some(interp_keys_ext) = exts.get(INTERP_KEYS_EXT_ID.into())
-                        {
-                            let interp_key = TypedCryptoKey::try_from(interp_keys_ext).unwrap();
-                            if interp_key.key_type == KeyType::AttestKey {
-                                if found.is_some() {
-                                    return Err(Error::custom(format!(
-                                        "duplicate trust anchor for {:?}",
-                                        id
-                                    )));
-                                }
-
-                                found = Some(interp_key.key)
-                            }
-                        }
-                    }
-                }
+        for kv in self.corims.iter_key() {
+            let cond = kv.condition;
+            if cond.get_environment().as_ref().unwrap().matches(id)
+                && let Some(elts) = &cond.key_list
+            {
+                found = elts.first().cloned();
             }
         }
 
@@ -213,26 +226,23 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
     }
 }
 
-fn ect_match(condition: &Ect, acs_ect: &Ect) -> bool {
+fn ect_match(condition: &ElementEct, acs_ect: &ElementEct) -> bool {
     if !condition
-        .environment
+        .get_environment()
         .as_ref()
         .unwrap()
-        .matches(acs_ect.environment.as_ref().unwrap())
+        .matches(acs_ect.get_environment().as_ref().unwrap())
     {
         return false;
     }
 
-    // note: sect. 9.4.3 states authorities should be matched here, but it's not clear how given
-    // that evidence and reference/endorsement values obviously come from different sources...
-
     for cond_elt in condition.element_list.as_ref().unwrap() {
         let mut elt_matched = false;
 
-        for act_elt in acs_ect.element_list.as_ref().unwrap() {
-            match (&cond_elt.mkey, &act_elt.mkey) {
-                (Some(rv_mkey), Some(act_mkey)) => {
-                    if rv_mkey != act_mkey {
+        for acs_elt in acs_ect.element_list.as_ref().unwrap() {
+            match (&cond_elt.mkey, &acs_elt.mkey) {
+                (Some(rv_mkey), Some(acs_mkey)) => {
+                    if rv_mkey != acs_mkey {
                         continue;
                     }
                 }
@@ -243,7 +253,7 @@ fn ect_match(condition: &Ect, acs_ect: &Ect) -> bool {
                 (None, None) => (),
             }
 
-            if cond_elt.mval.matches(&act_elt.mval) {
+            if cond_elt.mval.matches(&acs_elt.mval) {
                 elt_matched = true;
                 break;
             }
@@ -259,6 +269,7 @@ fn ect_match(condition: &Ect, acs_ect: &Ect) -> bool {
 
 #[cfg(test)]
 mod test {
+    use std::assert_eq;
     use std::collections::HashMap;
 
     use super::*;
@@ -268,14 +279,15 @@ mod test {
 
     #[test]
     fn verifier_test() {
-        let corim_rv_plat = include_bytes!("../../test/corim/signed-corim-cca-ref-plat.cbor");
-        let corim_rv_realm = include_bytes!("../../test/corim/signed-corim-cca-ref-realm.cbor");
-        let corim_ta = include_bytes!("../../test/corim/signed-corim-cca-ta.cbor");
+        let corim_rv_plat = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
+        let corim_rv_realm = include_bytes!("../../test/corim/signed-corim-cca-realm-rv.cbor");
+        let corim_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
         let evidence = include_bytes!("../../test/cca/cca-token-01.cbor");
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
+        keystore.add("verifier-key".as_bytes(), key).unwrap();
 
         let mut store = MemCorimStore::new(keystore);
         store.add_bytes(corim_rv_plat.as_slice()).unwrap();
@@ -292,5 +304,39 @@ mod test {
         for appraisal in result.ear.submods.values() {
             assert_eq!(appraisal.status.to_string(), "affirming");
         }
+    }
+
+    #[test]
+    fn add_corim_bytes_invalid_profile() {
+        let corim_inv_profile =
+            include_bytes!("../../test/corim/signed-corim-cca-plat-unsupported-profile.cbor");
+        let key = include_bytes!("../../test/corim/key.pub.pem");
+        let mut keystore = MemKeyStore::new();
+        keystore.add("key.pub.pem".as_bytes(), key).unwrap();
+        let store = MemCorimStore::new(keystore);
+        let mut schemes = HashMap::new();
+        let cca_scheme: Box<dyn Scheme> = Box::new(CcaScheme::new());
+        schemes.insert("arm-cca".to_string(), cca_scheme);
+        let mut verifier = Verifier::new(store, schemes);
+        let _res = verifier.add_corim_bytes(corim_inv_profile);
+        assert_eq!(verifier.corims.items.rv_list.len(), 0);
+        assert_eq!(verifier.corims.items.ev_list.len(), 0);
+        assert_eq!(verifier.corims.items.key_list.len(), 0);
+    }
+
+    #[test]
+    fn add_corim_bytes_expired_corim() {
+        let corim_inv_profile =
+            include_bytes!("../../test/corim/signed-corim-cca-plat-expired-validity.cbor");
+        let key = include_bytes!("../../test/corim/key.pub.pem");
+        let mut keystore = MemKeyStore::new();
+        keystore.add("key.pub.pem".as_bytes(), key).unwrap();
+        let store = MemCorimStore::new(keystore);
+        let mut schemes = HashMap::new();
+        let cca_scheme: Box<dyn Scheme> = Box::new(CcaScheme::new());
+        schemes.insert("arm-cca".to_string(), cca_scheme);
+        let mut verifier = Verifier::new(store, schemes);
+        let _res = verifier.add_corim_bytes(corim_inv_profile);
+        assert_eq!(verifier.corims.items.rv_list.len(), 0);
     }
 }
