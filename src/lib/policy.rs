@@ -2,10 +2,8 @@ use std::fs;
 use std::io;
 
 use anyhow::Result;
-use ear::{Appraisal, RawValue};
+use ear::Appraisal;
 use regorus::{Engine, Value};
-
-use crate::result::Error;
 
 /// A [Policy] describes how inputs should be evaluated to generated an attestation result.
 /// Policy rules are writen using [Rego policy
@@ -49,12 +47,12 @@ use crate::result::Error;
 ///
 /// refvals contains ect if {
 ///   ect = platform[_]
-///   ect["cm-type"] == "reference-values"
+///   ect["cmtype"] == "reference-values"
 /// }
 ///
 /// evidence contains ect if {
 ///   ect = platform[_]
-///   ect["cm-type"] == "evidence"
+///   ect["cmtype"] == "evidence"
 /// }
 ///
 /// # NOTE: APPROVED_CONFIG and UNSAFE_CONFIG are defined in the preamble
@@ -151,52 +149,11 @@ pub fn appraise(input: &str, policy: &Policy) -> Result<Appraisal> {
     );
     appraisal.update_status_from_trust_vector();
 
-    appraisal.policy_claims =
-        match rego_to_ear(engine.eval_rule("data.policy.policy_claims".to_string())?) {
-            RawValue::Map(m) => m
-                .iter()
-                .map(|(x, y)| {
-                    if let RawValue::String(s) = x {
-                        Ok((s.to_owned(), y.to_owned()))
-                    } else {
-                        Err(Error::PolicyClaims(RawValue::Map(m.to_owned())))
-                    }
-                })
-                .collect(),
-            r => Err(Error::PolicyClaims(r)),
-        }?;
-
     Ok(appraisal)
-}
-
-fn rego_to_ear(val: Value) -> RawValue {
-    match val {
-        Value::Null => RawValue::Null,
-        Value::Undefined => RawValue::Null,
-        Value::Bool(v) => RawValue::Bool(v),
-        Value::Number(v) => {
-            if let Some(i) = v.as_i64() {
-                RawValue::Integer(i)
-            } else if let Some(f) = v.as_f64() {
-                RawValue::Float(f)
-            } else {
-                RawValue::Null
-            }
-        }
-        Value::String(v) => RawValue::String(v.to_string()),
-        Value::Array(v) => RawValue::Array(v.iter().map(|x| rego_to_ear(x.to_owned())).collect()),
-        Value::Set(v) => RawValue::Array(v.iter().map(|x| rego_to_ear(x.to_owned())).collect()),
-        Value::Object(v) => RawValue::Map(
-            v.iter()
-                .map(|(x, y)| (rego_to_ear(x.to_owned()), rego_to_ear(y.to_owned())))
-                .collect(),
-        ),
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::fs;
     use std::path::Path;
 
     use ear::Appraisal;

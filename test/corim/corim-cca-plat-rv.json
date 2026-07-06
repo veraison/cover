@@ -1,5 +1,9 @@
 {
-  "id": "test corim id",
+  "id": "00000000-0000-0000-cca4-000000000000",
+  "profile": {
+    "type": "uri",
+    "value": "tag:arm.com,2025:endorsements/cca_platform#1.0.0"
+  },
   "tags": [
     {
       "type": "comid",

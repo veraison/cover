@@ -11,7 +11,7 @@ pub fn b64decode(v: &str) -> Result<Vec<u8>, Error> {
 
 // Helper function to convert PEM-encoded SubjectPublicKeyInfo into JWK
 pub fn pem_spki_to_jwk_string(pem_bytes: &[u8]) -> Result<String, Error> {
-    use elliptic_curve::sec1::{FromEncodedPoint, ModulusSize, ToEncodedPoint};
+    use elliptic_curve::sec1::{FromSec1Point, ModulusSize, ToSec1Point};
     use elliptic_curve::{AffinePoint, CurveArithmetic, FieldBytesSize};
     use elliptic_curve::{PublicKey as EcPublicKey, pkcs8::DecodePublicKey};
     use p256::NistP256;
@@ -36,10 +36,10 @@ pub fn pem_spki_to_jwk_string(pem_bytes: &[u8]) -> Result<String, Error> {
     fn extract_ec_point_x_y<C>(ec_pub: EcPublicKey<C>) -> Result<(String, String), Error>
     where
         C: CurveArithmetic,
-        AffinePoint<C>: FromEncodedPoint<C> + ToEncodedPoint<C>,
+        AffinePoint<C>: FromSec1Point<C> + ToSec1Point<C>,
         FieldBytesSize<C>: ModulusSize,
     {
-        let point = ec_pub.to_encoded_point(false);
+        let point = ec_pub.to_sec1_point(false);
         if let Some(x) = point.x()
             && let Some(y) = point.y()
         {
