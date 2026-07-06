@@ -138,4 +138,10 @@ impl From<ear::Error> for Error {
     }
 }
 
+impl From<cmw::Error> for Error {
+    fn from(value: cmw::Error) -> Self {
+        Self::Custom(value.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;

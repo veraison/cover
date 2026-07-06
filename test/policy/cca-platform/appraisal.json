@@ -1,6 +1,6 @@
 {
-    "ear.status": "affirming",
-    "ear.trustworthiness-vector": {
+    "ear_status": "affirming",
+    "ear_trustworthiness_vector": {
         "instance-identity": 2,
         "configuration": 2,
         "executables": 3,
