@@ -36,23 +36,26 @@ fn jwk_public_key_use_to_cose(key_use: jwk::PublicKeyUse) -> Result<CoseKeyOpera
     }
 }
 
-fn jwk_algorithm_to_cose(alg: jwk::KeyAlgorithm) -> CoseAlgorithm {
+fn jwk_algorithm_to_cose(alg: jwk::KeyAlgorithm) -> Result<CoseAlgorithm, Error> {
     match alg {
-        jwk::KeyAlgorithm::HS256 => CoseAlgorithm::Hmac256_256,
-        jwk::KeyAlgorithm::HS384 => CoseAlgorithm::Hmac384_384,
-        jwk::KeyAlgorithm::HS512 => CoseAlgorithm::Hmac512_512,
-        jwk::KeyAlgorithm::ES256 => CoseAlgorithm::ES256,
-        jwk::KeyAlgorithm::ES384 => CoseAlgorithm::ES384,
-        jwk::KeyAlgorithm::RS256 => CoseAlgorithm::RS256,
-        jwk::KeyAlgorithm::RS384 => CoseAlgorithm::RS384,
-        jwk::KeyAlgorithm::RS512 => CoseAlgorithm::RS512,
-        jwk::KeyAlgorithm::PS256 => CoseAlgorithm::PS256,
-        jwk::KeyAlgorithm::PS384 => CoseAlgorithm::PS384,
-        jwk::KeyAlgorithm::PS512 => CoseAlgorithm::PS512,
-        jwk::KeyAlgorithm::EdDSA => CoseAlgorithm::EdDSA,
-        jwk::KeyAlgorithm::RSA1_5 => CoseAlgorithm::RS1,
-        jwk::KeyAlgorithm::RSA_OAEP => CoseAlgorithm::RsaesOaepRfc,
-        jwk::KeyAlgorithm::RSA_OAEP_256 => CoseAlgorithm::RsaesOaepSha256,
+        jwk::KeyAlgorithm::HS256 => Ok(CoseAlgorithm::Hmac256_256),
+        jwk::KeyAlgorithm::HS384 => Ok(CoseAlgorithm::Hmac384_384),
+        jwk::KeyAlgorithm::HS512 => Ok(CoseAlgorithm::Hmac512_512),
+        jwk::KeyAlgorithm::ES256 => Ok(CoseAlgorithm::ES256),
+        jwk::KeyAlgorithm::ES384 => Ok(CoseAlgorithm::ES384),
+        jwk::KeyAlgorithm::RS256 => Ok(CoseAlgorithm::RS256),
+        jwk::KeyAlgorithm::RS384 => Ok(CoseAlgorithm::RS384),
+        jwk::KeyAlgorithm::RS512 => Ok(CoseAlgorithm::RS512),
+        jwk::KeyAlgorithm::PS256 => Ok(CoseAlgorithm::PS256),
+        jwk::KeyAlgorithm::PS384 => Ok(CoseAlgorithm::PS384),
+        jwk::KeyAlgorithm::PS512 => Ok(CoseAlgorithm::PS512),
+        jwk::KeyAlgorithm::EdDSA => Ok(CoseAlgorithm::EdDSA),
+        jwk::KeyAlgorithm::RSA1_5 => Ok(CoseAlgorithm::RS1),
+        jwk::KeyAlgorithm::RSA_OAEP => Ok(CoseAlgorithm::RsaesOaepRfc),
+        jwk::KeyAlgorithm::RSA_OAEP_256 => Ok(CoseAlgorithm::RsaesOaepSha256),
+        jwk::KeyAlgorithm::UNKNOWN_ALGORITHM => {
+            Err(Error::Custom(format!("Unknowm algorithm {}", alg)))
+        }
     }
 }
 
@@ -107,7 +110,7 @@ pub fn jwk_to_crypto_key(jwk: jwk::Jwk) -> Result<CryptoKeyTypeChoice<'static>, 
     }
 
     if let Some(alg) = &jwk.common.key_algorithm {
-        cose_key.alg = Some(jwk_algorithm_to_cose(*alg))
+        cose_key.alg = Some(jwk_algorithm_to_cose(*alg)?)
     }
 
     match &jwk.algorithm {
