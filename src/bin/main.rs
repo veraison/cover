@@ -191,7 +191,7 @@ fn verify(args: &Cli) -> Result<()> {
         }
     };
 
-    info!("writing result to {}", &out_path);
+    info!("writing result to {}", out_path);
 
     let mut out = match args.force {
         true => File::create(&out_path),

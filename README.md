@@ -6,15 +6,17 @@ generation). In lieu of subsequent phases, it uses a Rego-based policy engine fo
 evaluation, and generates an attestation result in EAR\[[2]\] format.
 
 This implementation is intended as a Proof-of-Concept only. It has the following limitations:
+
 - Arm CCA is the only attestation scheme that is currently implemented.
+
 - Only signed CoRIMs are supported.
+
 - Only basic in-memory implementation of key and CoRIM stores are implemented.
 
 The verification flow proceeds as follows.
 
 - CoRIMs are processed by validating their signatures and extracting contained measurements
-  into the "corim store" as RV (reference values), EV (endorsed values), and EVS (endorsed
-  values series) relations.
+  into the "corim store" as RV (reference values), EV (endorsed values) relations.
 - The signature on the evidence is verified using a trust anchor obtained from the corim store
   based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
   is used. Evidence claims are then extracted as ECT (environment-claims tuple) records.
