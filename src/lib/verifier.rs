@@ -170,40 +170,6 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
             }
         }
 
-        for evs in self.corims.iter_evs() {
-            let mut conditions_match = true;
-
-            for cond in &evs.condition {
-                for acs_ect in act {
-                    if !ect_match(cond, acs_ect) {
-                        conditions_match = false;
-                        break;
-                    }
-                }
-            }
-
-            if conditions_match {
-                for entry in &evs.series {
-                    for acs_ect in act {
-                        let mut selection_matched = true;
-                        for select in &entry.selection {
-                            if !ect_match(select, acs_ect) {
-                                selection_matched = false;
-                                break;
-                            }
-                        }
-
-                        if selection_matched {
-                            for add_ect in &entry.addition {
-                                res.push(add_ect.clone());
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
         res
     }
 

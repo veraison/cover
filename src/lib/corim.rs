@@ -3,10 +3,9 @@ use std::fmt::Display;
 use std::vec::IntoIter;
 
 use corim_rs::{
-    AttestKeyTripleRecord, ConciseMidTag, ConciseTagTypeChoice,
-    ConditionalEndorsementSeriesTripleRecord, ConditionalEndorsementTripleRecord, Corim,
-    CoseKeyOwner, CryptoKeyTypeChoice, EndorsedTripleRecord, ExtensionValue, Label,
-    MeasurementValuesMapBuilder, OpensslSigner, ProfileTypeChoice, ReferenceTripleRecord,
+    AttestKeyTripleRecord, ConciseMidTag, ConciseTagTypeChoice, Corim, CoseKeyOwner,
+    CryptoKeyTypeChoice, EndorsedTripleRecord, ExtensionValue, Label, MeasurementValuesMapBuilder,
+    OpensslSigner, ProfileTypeChoice, ReferenceTripleRecord,
 };
 use serde::{Deserialize, Serialize, de};
 
@@ -234,69 +233,6 @@ impl<'a> EvRelation<'a> {
         })
     }
 
-    pub fn from_conditional_endorsement_triple_record<'b>(
-        cet: &ConditionalEndorsementTripleRecord<'b>,
-        profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
-    ) -> Result<EvRelation<'a>> {
-        let condition: Result<Vec<Ect>> = cet
-            .conditions
-            .iter()
-            .map(|cond| {
-                EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(cond.environment.to_fully_owned())
-                    .element_list(
-                        cond.claims_list
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()
-            })
-            .collect();
-
-        if let Err(err) = condition {
-            return Err(Error::custom(format!("CET condition error: {}", err)));
-        }
-
-        let addition: Result<Vec<Ect>> = cet
-            .endorsements
-            .iter()
-            .map(|end| {
-                match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(end.condition.to_fully_owned())
-                .element_list(
-                    end.endorsement
-                        .iter()
-                        .map(|e| ElementMap {
-                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                            mval: e.mval.to_fully_owned(),
-                        })
-                        .collect(),
-                )
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()
-            })
-            .collect();
-
-        if let Err(err) = addition {
-            return Err(Error::custom(format!("CET addition error: {}", err)));
-        }
-
-        Ok(EvRelation {
-            condition: condition.unwrap(),
-            addition: addition.unwrap(),
-        })
-    }
-
     pub fn from_attest_key_triple_record<'b>(
         akt: &AttestKeyTripleRecord<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
@@ -351,100 +287,10 @@ impl<'a> EvRelation<'a> {
     }
 }
 
-/// Endorsed value series entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvsRelationSeriesEntry<'a> {
-    pub selection: Vec<Ect<'a>>,
-    pub addition: Vec<Ect<'a>>,
-}
-
-/// Endorsed value series relation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvsRelation<'a> {
-    pub condition: Vec<Ect<'a>>,
-    pub series: Vec<EvsRelationSeriesEntry<'a>>,
-}
-
-impl<'a> EvsRelation<'a> {
-    pub fn from_conditional_endorsement_series_triple_record<'b>(
-        cest: &ConditionalEndorsementSeriesTripleRecord<'b>,
-        profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
-    ) -> Result<EvsRelation<'a>> {
-        let condition = EctBuilder::new()
-            .cm_type(CmType::Endorsements)
-            .environment(cest.condition.environment.to_fully_owned())
-            .element_list(
-                cest.condition
-                    .claims_list
-                    .iter()
-                    .map(|e| ElementMap {
-                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                        mval: e.mval.to_fully_owned(),
-                    })
-                    .collect(),
-            )
-            .build()?;
-
-        let series: Result<Vec<EvsRelationSeriesEntry>> = cest
-            .series
-            .iter()
-            .map(|csr| {
-                let selection: Ect<'a> = EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(cest.condition.environment.to_fully_owned())
-                    .element_list(
-                        csr.selection
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()?;
-
-                let addition: Ect<'a> = match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(cest.condition.environment.to_fully_owned())
-                .element_list(
-                    csr.addition
-                        .iter()
-                        .map(|e| ElementMap {
-                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                            mval: e.mval.to_fully_owned(),
-                        })
-                        .collect(),
-                )
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()?;
-
-                Ok(EvsRelationSeriesEntry {
-                    selection: vec![selection],
-                    addition: vec![addition],
-                })
-            })
-            .collect();
-
-        if let Err(err) = series {
-            return Err(Error::custom(format!("CEST series error: {}", err)));
-        }
-
-        Ok(EvsRelation {
-            condition: vec![condition],
-            series: series.unwrap(),
-        })
-    }
-}
-
 /// A store of reference and endorsed values extracted from CoRIMs.
 pub trait CorimStore<'a> {
     type RvIter: Iterator<Item = RvRelation<'a>>;
     type EvIter: Iterator<Item = EvRelation<'a>>;
-    type EvsIter: Iterator<Item = EvsRelation<'a>>;
 
     /// Add values from the specified `Corim` to the store.
     fn add(&mut self, corim: &Corim) -> Result<()>;
@@ -460,9 +306,6 @@ pub trait CorimStore<'a> {
 
     /// Iterate over extracted [EvRelation]s.
     fn iter_ev(&self) -> Self::EvIter;
-
-    /// Iterate over extracted [EvsRelation]s.
-    fn iter_evs(&self) -> Self::EvsIter;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -471,8 +314,6 @@ pub struct CorimParseResult<'a> {
     pub rv_list: Vec<RvRelation<'a>>,
     #[serde(rename = "ev-list")]
     pub ev_list: Vec<EvRelation<'a>>,
-    #[serde(rename = "evs-list")]
-    pub evs_list: Vec<EvsRelation<'a>>,
 }
 
 impl<'a> CorimParseResult<'a> {
@@ -480,20 +321,17 @@ impl<'a> CorimParseResult<'a> {
         CorimParseResult {
             rv_list: vec![],
             ev_list: vec![],
-            evs_list: vec![],
         }
     }
 
     pub fn extend(&mut self, other: CorimParseResult<'a>) {
         self.rv_list.extend(other.rv_list);
         self.ev_list.extend(other.ev_list);
-        self.evs_list.extend(other.evs_list);
     }
 
     pub fn append(&mut self, other: &mut CorimParseResult<'a>) {
         self.rv_list.append(other.rv_list.as_mut());
         self.ev_list.append(other.ev_list.as_mut());
-        self.evs_list.append(other.evs_list.as_mut());
     }
 
     pub fn update_from_comid<'b>(
@@ -518,27 +356,6 @@ impl<'a> CorimParseResult<'a> {
                 self.ev_list.push(EvRelation::from_endorsed_triple_record(
                     evt, profile, authority,
                 )?);
-                updated = true;
-            }
-        }
-
-        if let Some(cets) = &comid.triples.conditional_endorsement_triples {
-            for cet in cets {
-                self.ev_list
-                    .push(EvRelation::from_conditional_endorsement_triple_record(
-                        cet, profile, authority,
-                    )?);
-                updated = true;
-            }
-        }
-
-        if let Some(cests) = &comid.triples.conditional_endorsement_series_triples {
-            for cest in cests {
-                self.evs_list.push(
-                    EvsRelation::from_conditional_endorsement_series_triple_record(
-                        cest, profile, authority,
-                    )?,
-                );
                 updated = true;
             }
         }
@@ -590,7 +407,6 @@ impl<S: KeyStore> MemCorimStore<'_, S> {
 impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
     type RvIter = IntoIter<RvRelation<'a>>;
     type EvIter = IntoIter<EvRelation<'a>>;
-    type EvsIter = IntoIter<EvsRelation<'a>>;
 
     #[allow(clippy::needless_lifetimes)]
     fn add<'b>(&mut self, corim: &Corim<'b>) -> Result<()> {
@@ -612,10 +428,6 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
 
     fn iter_ev(&self) -> Self::EvIter {
         self.items.ev_list.clone().into_iter()
-    }
-
-    fn iter_evs(&self) -> Self::EvsIter {
-        self.items.evs_list.clone().into_iter()
     }
 }
 

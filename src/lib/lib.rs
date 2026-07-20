@@ -11,8 +11,7 @@
 //! The verification flow proceeds as follows.
 //!
 //! - CoRIMs are processed by validating their signatures and extracting contained measurements
-//!   into the "corim store" as RV (reference values), EV (endorsed values), and EVS (endorsed
-//!   values series) relations.
+//!   into the "corim store" as RV (reference values), EV (endorsed values), and Key relations.
 //! - The signature on the evidence is verified using a trust anchor obtained from the corim store
 //!   based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
 //!   is used. Evidence claims are then extracted as ECT (environment-claims tuple) records.
@@ -107,7 +106,7 @@ pub mod verifier;
 
 pub use authority::jwk_to_crypto_key;
 pub use cca::CcaScheme;
-pub use corim::{CorimStore, EvRelation, EvsRelation, MemCorimStore, RvRelation};
+pub use corim::{CorimStore, EvRelation, MemCorimStore, RvRelation};
 pub use ect::{CmType, Ect, EctBuilder, ElementMap};
 pub use keystore::{FsKeyStore, KeyStore, MemKeyStore};
 pub use policy::{Policy, appraise};
