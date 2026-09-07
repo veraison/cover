@@ -1,3 +1,5 @@
+mod profile;
+pub use profile::CcaCorimProfile;
 use std::borrow::Cow;
 
 use ccatoken::{
@@ -7,8 +9,8 @@ use ccatoken::{
 use corim_rs::{
     CryptoKeyTypeChoice, EnvironmentMap,
     core::{
-        Bytes, Digest, ExtensionValue, HashAlgorithm, RawValueType, RawValueTypeChoice,
-        TaggedBytes, TaggedUeidType, Text, UeidType, Uri,
+        Bytes, Digest, HashAlgorithm, RawValueType, RawValueTypeChoice, TaggedBytes,
+        TaggedUeidType, Text, UeidType, Uri,
     },
     corim::ProfileTypeChoice,
     triples::{
@@ -19,7 +21,7 @@ use corim_rs::{
 use ear::claim::TRUSTWORTHY_INSTANCE;
 
 use crate::authority::jwk_to_crypto_key;
-use crate::ect::{CmType, Ect, ElementMap};
+use crate::ect::{CmType, Ect, ElementEct, ElementMap};
 use crate::policy::Policy;
 use crate::result::Error;
 use crate::scheme::Scheme;
@@ -48,6 +50,7 @@ pub const LC_DECOMMISSIONED: i64 = 6;
 /// Architecture](https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture)
 /// attestation scheme. Evidence is composed of plaform and realm components, each evaluated
 /// according to its own policy.
+
 #[derive(Debug, Default)]
 pub struct CcaScheme;
 
@@ -64,6 +67,10 @@ impl Scheme for CcaScheme {
 
     fn profile(&self) -> String {
         "arm-cca".to_string()
+    }
+
+    fn get_supported_corim_profiles(&self) -> Vec<String> {
+        CcaCorimProfile::all()
     }
 
     fn match_evidence(&self, evidence: &[u8]) -> bool {
@@ -173,33 +180,45 @@ fn cca_to_ects<'a, S: ITrustAnchorStore>(
         },
     }?;
 
-    let mut plat_ect = platform_to_ect(&evidence.platform_claims)?;
-    plat_ect.add_authority(authority.clone());
-
-    let mut realm_ect = realm_to_ect(&evidence.realm_claims)?;
-    realm_ect.add_authority(authority);
-
-    Ok(vec![plat_ect, realm_ect])
+    Ok(vec![
+        platform_to_ect(&evidence.platform_claims, &authority)?,
+        realm_to_ect(&evidence.realm_claims)?,
+    ])
 }
 
-fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
-    let mut ect = Ect::new(CmType::Evidence);
+fn platform_to_ect<'a>(
+    plat: &Platform,
+    cpak_pub: &CryptoKeyTypeChoice<'a>,
+) -> Result<Ect<'a>, Error> {
+    // TODO:
+    // Implement platform evidence profile check here once rust-ccatoken is updated.
+    // This does not have any impact on end result, since all the current supported profiles by
+    // ccaguest and one specificed in draft-ydb-rats-cca-endorsements-04, produce same Evidence object.
 
-    ect.set_environment(
-        EnvironmentMapBuilder::default()
-            .class(
-                ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Bytes(plat.impl_id.as_slice().into()))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap(),
-    );
+    let mut ect = ElementEct::new()
+        .cmtype(CmType::Evidence)
+        .environment(
+            EnvironmentMapBuilder::default()
+                .class(
+                    ClassMapBuilder::default()
+                        .class_id(ClassIdTypeChoice::Bytes(plat.impl_id.as_slice().into()))
+                        .build()
+                        .unwrap(),
+                )
+                // Adding instance id as per transformation function given in
+                // "A-Corim-profile-for-cca-endorsements" rev-04 draft section 3.1.5.1
+                // https://www.ietf.org/archive/id/draft-ydb-rats-cca-endorsements-04.html#figure-15
+                .instance(InstanceIdTypeChoice::Ueid(TaggedUeidType::from(
+                    UeidType::try_from(plat.inst_id.as_slice())?,
+                )))
+                .build()
+                .unwrap(),
+        )
+        .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
+            plat.profile.to_string(),
+        ))));
 
-    ect.set_profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-        plat.profile.to_string(),
-    ))));
+    ect.add_authority(cpak_pub.clone());
 
     let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg.as_str()).map_err(Error::custom)?;
 
@@ -218,6 +237,8 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
 
     ect.add_element(cfg_element);
 
+    // Transformation of platform lifecycle claim is not provided in draft-ydp-rats-cca-endorsements-04
+    // However, a lifecyle element-map is created so that it can be checked during the policy evaluation.
     let lifecycle_elt = ElementMap {
         mkey: Some(corim_rs::triples::MeasuredElementTypeChoice::Tstr(
             "lifecycle".into(),
@@ -225,7 +246,7 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
         mval: MeasurementValuesMapBuilder::default()
             .add_extension(
                 RAW_INT_LABEL.into(),
-                ExtensionValue::Int(
+                corim_rs::ExtensionValue::Int(
                     match plat.lifecycle {
                         0x0000..=0x00ff => Ok(LC_UNKNOWN),
                         0x1000..=0x10ff => Ok(LC_ASSEMBLY_AND_TEST),
@@ -277,31 +298,39 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
         };
 
         ect.add_element(element);
+
+        // TODO:
+        // Add code to parse "Platform TBB ROTPK" and "Platform manufacturing config"
+        // once they are supported in veraison/rust-ccatoken
     }
 
-    Ok(ect)
+    Ok(Ect::from(ect))
 }
 
 fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
-    let mut ect = Ect::new(CmType::Evidence);
+    // TODO:
+    // Implement realm evidence profile check here once rust-ccatoken is updated.
+    // This does not have any impact on end result, since all the current supported profiles by
+    // ccaguest and one specificed in draft-ydb-rats-cca-endorsements-04, produce same Evidence object.
 
-    ect.set_environment(
-        EnvironmentMapBuilder::default()
-            .class(
-                ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
-                        realm.rim.clone(),
-                    ))))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap(),
-    );
-
-    ect.set_profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-        realm.profile.to_string(),
-    ))));
+    let mut ect = ElementEct::new()
+        .cmtype(CmType::Evidence)
+        .environment(
+            EnvironmentMapBuilder::default()
+                .class(
+                    ClassMapBuilder::default()
+                        .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
+                            realm.rim.clone(),
+                        ))))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap(),
+        )
+        .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
+            realm.profile.to_string(),
+        ))));
 
     let hash_alg = HashAlgorithm::try_from(realm.hash_alg.as_str()).map_err(Error::custom)?;
 
@@ -342,7 +371,7 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
             .map_err(Error::custom)?,
     });
 
-    Ok(ect)
+    Ok(Ect::from(ect))
 }
 
 #[cfg(test)]

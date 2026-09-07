@@ -1,40 +1,45 @@
 # cover
 
 Cover (COrim VERifier) is an implementation of CoRIM-based verifier as outline in CoRIM draft
-spec (rev 8.) Section 9\[[1]\]. It attempts follow the outlined algorithm up to phase 4 (ACS
-generation). In lieu of subsequent phases, it uses a Rego-based policy engine for policy
+spec (rev 11) Section 8\[[1]\]. It follows the outlined algorithm up to phase 4 (ACS generation).
+In lieu of subsequent phases, it uses a Rego-based policy engine for policy
 evaluation, and generates an attestation result in EAR\[[2]\] format.
 
 This implementation is intended as a Proof-of-Concept only. It has the following limitations:
+
 - Arm CCA is the only attestation scheme that is currently implemented.
-- Only signed CoRIMs are supported.
+
 - Only basic in-memory implementation of key and CoRIM stores are implemented.
 
 The verification flow proceeds as follows.
 
-- CoRIMs are processed by validating their signatures and extracting contained measurements
-  into the "corim store" as RV (reference values), EV (endorsed values), and EVS (endorsed
-  values series) relations.
+- CoRIMs are processed by validating their signatures for signed CoRIMs and extracting contained 
+  measurements into the "corim store" as RV (reference values), EV (endorsed values) or Key relations.
+- Unsigned CoRIM verification is not done and it is assumed that user has already verified the
+  CoRIMs before passing into the verifier.
 - The signature on the evidence is verified using a trust anchor obtained from the corim store
   based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
   is used. Evidence claims are then extracted as ECT (environment-claims tuple) records.
 - The evidence ECTs are then matched to the relations in the corim store. This results in the
-  ACS (appraisal claims set) -- a vector of ECT records containing evidence claims and matched
+  ACS (appraisal claims set) &mdash; a vector of ECT records containing evidence claims and matched
   reference values and endorsements.
 - The ACS is used as an input into the policy engine along with scheme-specific policies. Each
   policy results in an appraisal containing an AR4SI\[[3]\] trust vector.
 - The appraisals are added to an attestation result in EAR\[[2]\] format.
 
-[1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-08.html#name-example-verifier-algorithm
-[2]: https://www.ietf.org/archive/id/draft-fv-rats-ear-05.html
-[3]: https://www.ietf.org/archive/id/draft-ietf-rats-ar4si-09.html
+[1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-11.html#name-reference-verifier
+[2]: https://www.ietf.org/archive/id/draft-ietf-rats-ear-04.html
+[3]: https://www.ietf.org/archive/id/draft-ietf-rats-ar4si-10.html
 
 
 ## API
 
 Verification flow consists of the following components:
+
 - A key store that contains keys that are used to verify signatures on CoRIMs. The key for a
   CoRIM is looked up from the store based on the `kid` inside the CoRIM.
+  For unsigned CoRIMs, it is assumed that CoRIM is already verified by user and user provided
+  pub key is used as verfying authority of the CoRIM.
 - A CoRIM store that loads endorsements and reference values from CoRIMs.
 - A scheme that defines how evidence is processed to extract claims, and what policy is applied
   to create an attestation result.
@@ -90,9 +95,12 @@ Verification flow consists of the following components:
 
 ```bash
     target/debug/cover-cli  --corim-dir test/corim/ \
-        --key test/corim/key.pub.pem --pretty  test/cca/cca-token-01.cbor \
+        # Public key used to verify signed CoRIM signatures
+        --key test/corim/key.pub.pem 
+        # For unsigned corim and attest/identity key, this is used as verifying authority
+        --verifier-key test/corim/key.pub.pem \ 
+        --pretty  test/cca/cca-token-01.cbor \
         --nonce adfadaewafewr32r --output cca-token-01.ear.json
 ```
 
 use `-h` to see the full list of command line arguments.
-

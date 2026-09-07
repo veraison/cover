@@ -21,12 +21,12 @@ platform contains ect if {
 
 refvals contains ect if {
   ect = platform[_]
-  ect["cm-type"] == "reference-values"
+  ect["cmtype"] == "reference-values"
 }
 
 evidence contains ect if {
   ect = platform[_]
-  ect["cm-type"] == "evidence"
+  ect["cmtype"] == "evidence"
 }
 
 lifecycle := ret if {

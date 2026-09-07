@@ -12,6 +12,7 @@ use base64::{
 };
 use clap::{ArgAction, Parser};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
+use corim_rs::Corim;
 use log::{debug, error, info};
 
 use cover::{
@@ -39,6 +40,11 @@ struct Cli {
     /// kid in the CoRIM in order to identify the key that should be used to verify it.
     #[arg(name = "key", short, long, action = ArgAction::Append)]
     keys: Vec<String>,
+
+    /// Public key of Verifier/user of library in PEM format. This key is used as authority of attest/identiy key
+    /// during internal processing and if unsigned corim is provided then same key is used as authority for CoRIMs.
+    #[arg(long = "verifier-key")]
+    verifier_key: String,
 
     /// Path to CoRIM containing data relevant to verification of provided evidence.
     #[arg(short, long = "corim", action = ArgAction::Append)]
@@ -93,7 +99,6 @@ fn read_key<P: AsRef<Path>>(path: P) -> Result<(String, Vec<u8>)> {
         2 => Ok((parts[0].to_string(), parts[1].to_string())),
         _ => Err(Error::custom("invalid key path")),
     }?;
-
     let bytes = fs::read(&actual_path).map_err(Error::custom)?;
 
     Ok((kid, bytes))
@@ -118,17 +123,37 @@ fn verify(args: &Cli) -> Result<()> {
     let mut key_store = MemKeyStore::new();
 
     for key_path in &args.keys {
-        debug!("reading key from {:?}", key_path);
+        debug!("reading CoRIM verification key from \"{}\"", key_path);
         let (kid, key) = read_key(key_path)?;
         key_store.add(kid.as_bytes(), key.as_ref())?;
     }
 
+    debug!("reading user/verfier key from \"{}\"", args.verifier_key);
+    let (_, verifier_key) = read_key(&args.verifier_key)?;
+    key_store.add("verifier-key".as_bytes(), &verifier_key)?;
+
     let mut corim_store = MemCorimStore::new(key_store);
+
+    let mut corim_loaded = false;
 
     for corim in &args.corims {
         debug!("loading CoRIM {:?}", corim);
         let corim_bytes = fs::read(corim).map_err(Error::custom)?;
-        corim_store.add_bytes(corim_bytes.as_slice())?;
+        let parsed_corim = Corim::from_cbor(corim_bytes.as_slice())?;
+        if schemes.values().any(|scheme| {
+            scheme
+                .as_ref()
+                .supports_corim(&parsed_corim)
+                .unwrap_or(false)
+        }) {
+            corim_store.add(&parsed_corim)?;
+            corim_loaded = true;
+        } else {
+            info!(
+                "skipping CoRIM {:?} because it does not match a supported scheme profile or is expired",
+                corim
+            );
+        }
     }
 
     for dir in &args.corim_dirs {
@@ -136,13 +161,31 @@ fn verify(args: &Cli) -> Result<()> {
             let entry = entry?;
             match entry.path().extension().and_then(OsStr::to_str) {
                 Some("cbor") | Some("corim") => {
-                    debug!("loading CoRIM {:?}", entry.path());
+                    info!("loading CoRIM {:?}", entry.path());
                     let corim_bytes = fs::read(entry.path()).map_err(Error::custom)?;
-                    corim_store.add_bytes(corim_bytes.as_slice())?;
+                    let parsed_corim = Corim::from_cbor(corim_bytes.as_slice())?;
+                    if schemes.values().any(|scheme| {
+                        scheme
+                            .as_ref()
+                            .supports_corim(&parsed_corim)
+                            .unwrap_or(false)
+                    }) {
+                        corim_store.add(&parsed_corim)?;
+                        corim_loaded = true;
+                    } else {
+                        info!(
+                            "skipping CoRIM {:?} because it does not match a supported scheme profile or is expired",
+                            entry.path()
+                        );
+                    };
                 }
                 Some(_) | None => (),
-            }
+            };
         }
+    }
+
+    if !corim_loaded {
+        return Err(Error::custom("No valid corim found. Exiting ..."));
     }
 
     let nonce = match &args.nonce {
@@ -169,6 +212,10 @@ fn verify(args: &Cli) -> Result<()> {
     debug!("nonce: {:x?}", nonce);
 
     let verifier = Verifier::new(corim_store, schemes);
+    // Check if evidence format matches with supported schemes.
+    if verifier.match_evidence(evidence.as_slice()).is_none() {
+        return Err(Error::custom("evidence format not supported"));
+    }
     let result = verifier.verify(&args.scheme, evidence.as_slice(), nonce.as_deref())?;
 
     debug!("ACS: {}", serde_json::to_string(&result.acs)?);
@@ -191,7 +238,7 @@ fn verify(args: &Cli) -> Result<()> {
         }
     };
 
-    info!("writing result to {}", &out_path);
+    info!("writing result to {}", out_path);
 
     let mut out = match args.force {
         true => File::create(&out_path),

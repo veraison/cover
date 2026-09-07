@@ -1,188 +1,96 @@
-use std::collections::BTreeMap;
-use std::fmt::Display;
+use log::warn;
 use std::vec::IntoIter;
 
-use corim_rs::{
-    AttestKeyTripleRecord, ConciseMidTag, ConciseTagTypeChoice,
-    ConditionalEndorsementSeriesTripleRecord, ConditionalEndorsementTripleRecord, Corim,
-    CoseKeyOwner, CryptoKeyTypeChoice, EndorsedTripleRecord, ExtensionValue, Label,
-    MeasurementValuesMapBuilder, OpensslSigner, ProfileTypeChoice, ReferenceTripleRecord,
-};
-use serde::{Deserialize, Serialize, de};
+use crate::ect::ElementMap;
 
-use crate::ect::{CmType, Ect, EctBuilder, ElementMap};
+use chrono::DateTime;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use corim_rs::{
+    AttestKeyTripleRecord, ConciseMidTag, ConciseTagTypeChoice, Corim, CoseKeyOwner,
+    CryptoKeyTypeChoice, EndorsedTripleRecord, IdentityTripleRecord, MeasurementMap, OpensslSigner,
+    ProfileTypeChoice, ReferenceTripleRecord, ValidityMap,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::ect::{CmType, ElementEct, ElementEctBuilder, KeyEct, KeyEctBuilder, KeyType};
 use crate::keystore::KeyStore;
 use crate::result::{Error, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum KeyType {
-    AttestKey,
-    IdentityKey,
-}
+/// Helper function to check time validity of Corim.
+pub fn is_rim_valid(rim_validity: Option<&ValidityMap>) -> bool {
+    let Some(validity) = rim_validity else {
+        return true;
+    };
 
-impl From<&KeyType> for i64 {
-    fn from(value: &KeyType) -> Self {
-        match value {
-            KeyType::AttestKey => 0,
-            KeyType::IdentityKey => 1,
-        }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let not_before = validity
+        .not_before
+        .as_ref()
+        .map(|t| t.as_i128() as u64)
+        .unwrap_or(0);
+
+    let not_after = validity.not_after.as_i128() as u64;
+
+    if not_before > not_after {
+        warn!(
+            "Corim validity, Not before: {} is greater than Not After: {}",
+            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none"),
+            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
+        );
+        return false;
+    } else if now > not_after {
+        warn!(
+            "CoRIM expired on: {}",
+            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
+        );
+        return false;
+    } else if now < not_before {
+        warn!(
+            "CoRIM is not active till: {}",
+            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none")
+        );
+        return false;
     }
+
+    true
 }
 
-impl TryFrom<i64> for KeyType {
-    type Error = Error;
-
-    fn try_from(value: i64) -> std::result::Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::AttestKey),
-            1 => Ok(Self::IdentityKey),
-            n => Err(Error::invalid_value(n, "a valid KeyType: 0 or 1")),
-        }
-    }
-}
-
-impl Display for KeyType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::AttestKey => "attest-key",
-            Self::IdentityKey => "identity-key",
-        })
-    }
-}
-
-impl TryFrom<&str> for KeyType {
-    type Error = Error;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        match value {
-            "attest-key" => Ok(Self::AttestKey),
-            "identity-key" => Ok(Self::IdentityKey),
-            s => Err(Error::invalid_value(
-                s.to_string(),
-                "a valid KeyType: \"attest-key\" or \"identity-key\"",
-            )),
-        }
-    }
-}
-
-impl Serialize for KeyType {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if serializer.is_human_readable() {
-            self.to_string().serialize(serializer)
-        } else {
-            i64::from(self).serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for KeyType {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if deserializer.is_human_readable() {
-            String::deserialize(deserializer)?
-                .as_str()
-                .try_into()
-                .map_err(de::Error::custom)
-        } else {
-            i64::deserialize(deserializer)?
-                .try_into()
-                .map_err(de::Error::custom)
-        }
-    }
-}
-
-pub const INTERP_KEYS_EXT_ID: i128 = 65534;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypedCryptoKey<'a> {
-    pub key: CryptoKeyTypeChoice<'a>,
-    #[serde(rename = "key-type")]
-    pub key_type: KeyType,
-}
-
-impl From<TypedCryptoKey<'_>> for ExtensionValue<'_> {
-    fn from(value: TypedCryptoKey) -> Self {
-        let mut map: BTreeMap<Label, ExtensionValue> = BTreeMap::new();
-        let key_ser = serde_json::to_string(&value.key).unwrap();
-
-        map.insert("key".into(), key_ser.into());
-        map.insert("key-type".into(), value.key_type.to_string().into());
-
-        ExtensionValue::Map(map)
-    }
-}
-
-impl<'a> TryFrom<&ExtensionValue<'a>> for TypedCryptoKey<'a> {
-    type Error = Error;
-
-    fn try_from(value: &ExtensionValue<'a>) -> std::result::Result<Self, Self::Error> {
-        if let ExtensionValue::Map(map) = value {
-            let key_json = map
-                .get(&Label::from("key"))
-                .ok_or(Error::custom("missing key entry in interp_keys map"))?;
-
-            let key_type_text = map
-                .get(&Label::from("key-type"))
-                .ok_or(Error::custom("missing key-type entry in interp_keys map"))?;
-
-            let key: CryptoKeyTypeChoice = serde_json::from_str(
-                key_json
-                    .as_str()
-                    .ok_or(Error::custom("invalid key entry"))?,
-            )?;
-
-            let key_type: KeyType = KeyType::try_from(
-                key_type_text
-                    .as_str()
-                    .ok_or(Error::custom("invalid key-type entry"))?,
-            )?;
-
-            Ok(TypedCryptoKey { key, key_type })
-        } else {
-            Err(Error::custom(format!("expected map, found {:?}", value)))
-        }
-    }
+fn measurementmap_vec_to_elemenetmap_vec<'a, 'b>(
+    mms: &Vec<MeasurementMap<'a>>,
+) -> Vec<ElementMap<'b>> {
+    mms.iter().map(ElementMap::from).collect()
 }
 
 /// Reference value relation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RvRelation<'a> {
-    pub condition: Ect<'a>,
-    pub addition: Ect<'a>,
+    pub condition: ElementEct<'a>,
+    pub addition: ElementEct<'a>,
 }
 
 impl<'a> RvRelation<'a> {
     pub fn from_reference_triple_record<'b>(
         rvt: &ReferenceTripleRecord<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+        signer: &[CryptoKeyTypeChoice<'b>],
     ) -> Result<RvRelation<'a>> {
-        let condition: Ect<'a> = EctBuilder::new()
-            .cm_type(CmType::ReferenceValues)
+        let condition: ElementEct<'a> = ElementEctBuilder::new()
             .environment(rvt.ref_env.to_fully_owned())
-            .element_list(
-                rvt.ref_claims
-                    .iter()
-                    .map(|e| ElementMap {
-                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                        mval: e.mval.to_fully_owned(),
-                    })
-                    .collect(),
-            )
+            .element_list(measurementmap_vec_to_elemenetmap_vec(&rvt.ref_claims))
             .build()?;
 
-        let addition: Ect<'a> = match profile {
-            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-            None => EctBuilder::new(),
+        let addition: ElementEct<'a> = match profile {
+            Some(p) => ElementEctBuilder::new().profile(p.to_fully_owned()),
+            None => ElementEctBuilder::new(),
         }
-        .cm_type(CmType::ReferenceValues)
+        .cmtype(CmType::ReferenceValues)
         .environment(rvt.ref_env.to_fully_owned())
-        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+        .authority(signer.iter().map(|v| v.to_fully_owned()).collect())
         .build()?;
 
         Ok(RvRelation {
@@ -195,37 +103,29 @@ impl<'a> RvRelation<'a> {
 /// Endorsed value relation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvRelation<'a> {
-    pub condition: Vec<Ect<'a>>,
-    pub addition: Vec<Ect<'a>>,
+    pub condition: Vec<ElementEct<'a>>,
+    pub addition: Vec<ElementEct<'a>>,
 }
 
 impl<'a> EvRelation<'a> {
     pub fn from_endorsed_triple_record<'b>(
         evt: &EndorsedTripleRecord<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+        signer: &[CryptoKeyTypeChoice<'b>],
     ) -> Result<EvRelation<'a>> {
-        let condition = EctBuilder::new()
-            .cm_type(CmType::Endorsements)
+        let condition: ElementEct<'a> = ElementEctBuilder::new()
             .environment(evt.condition.to_fully_owned())
-            .element_list(
-                evt.endorsement
-                    .iter()
-                    .map(|e| ElementMap {
-                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                        mval: e.mval.to_fully_owned(),
-                    })
-                    .collect(),
-            )
+            // element list is not used for EV-triples, skipping
             .build()?;
 
-        let addition = match profile {
-            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-            None => EctBuilder::new(),
+        let addition: ElementEct<'a> = match profile {
+            Some(p) => ElementEctBuilder::new().profile(p.to_fully_owned()),
+            None => ElementEctBuilder::new(),
         }
-        .cm_type(CmType::Endorsements)
+        .cmtype(CmType::Endorsements)
         .environment(evt.condition.to_fully_owned())
-        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
+        .element_list(measurementmap_vec_to_elemenetmap_vec(&evt.endorsement))
+        .authority(signer.iter().map(|v| v.to_fully_owned()).collect())
         .build()?;
 
         Ok(EvRelation {
@@ -233,218 +133,176 @@ impl<'a> EvRelation<'a> {
             addition: vec![addition],
         })
     }
+}
 
-    pub fn from_conditional_endorsement_triple_record<'b>(
-        cet: &ConditionalEndorsementTripleRecord<'b>,
-        profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
-    ) -> Result<EvRelation<'a>> {
-        let condition: Result<Vec<Ect>> = cet
-            .conditions
-            .iter()
-            .map(|cond| {
-                EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(cond.environment.to_fully_owned())
-                    .element_list(
-                        cond.claims_list
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()
-            })
-            .collect();
+/// Key relation.
+// Key relation condition and addition ECT structure is inferred from \
+// transformation function given in corim draft (rev 11) figure 43
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyRelation<'a> {
+    pub condition: KeyEct<'a>,
+    pub addition: KeyEct<'a>,
+}
 
-        if let Err(err) = condition {
-            return Err(Error::custom(format!("CET condition error: {}", err)));
+/// Performs a deep copy of triple record conditions with lifetime conversion.
+///
+/// This helper function creates a fully owned copy of a [TriplesRecordCondition],
+/// converting all borrowed references to owned values with the target lifetime `'a`.
+fn keytriplerecord_condition_deep_copy<'a>(
+    conds: &corim_rs::TriplesRecordCondition,
+) -> corim_rs::TriplesRecordCondition<'a> {
+    let mut triple_record_conditions = corim_rs::TriplesRecordConditionBuilder::new();
+    if let Some(mk) = &conds.mkey {
+        triple_record_conditions = triple_record_conditions.mkey(mk.to_fully_owned());
+    }
+
+    if let Some(auth_by) = &conds.authorized_by {
+        triple_record_conditions = triple_record_conditions
+            .authorized_by(auth_by.iter().map(|c| c.to_fully_owned()).collect());
+    }
+    // Build can not panic since both field can not be empty at the same time.
+    triple_record_conditions
+        .build()
+        .expect("condition is always non-empty")
+}
+
+/// Trait for abstracting over different types of key triple records.
+///
+/// This trait provides a unified interface to extract information from key triple records,
+/// i.e. [AttestKeyTripleRecord] and [IdentityTripleRecord]. It allows for
+/// generic handling of key-related triples regardless of their specific type.
+trait KeyTripleRecord<'a> {
+    /// Returns the type of this key triple record (attestation or identity key).
+    fn get_key_triple_record_type(&self) -> KeyType;
+
+    /// Returns the environment map associated with this key triple record.
+    fn get_key_triple_environment(&self) -> corim_rs::EnvironmentMap<'a>;
+
+    /// Returns the list of cryptographic keys in this record.
+    fn get_key_triple_key_list(&self) -> Vec<CryptoKeyTypeChoice<'a>>;
+
+    /// Returns any conditions associated with this key triple record.
+    ///
+    /// Conditions that must be met for a triple record to be valid.
+    fn get_key_triple_conditions(&self) -> Option<corim_rs::TriplesRecordCondition<'a>>;
+}
+
+/// Implementation of [KeyTripleRecord] for attestation key triple records.
+impl<'a, 'b> KeyTripleRecord<'a> for AttestKeyTripleRecord<'b> {
+    fn get_key_triple_record_type(&self) -> KeyType {
+        KeyType::AttestKey
+    }
+
+    fn get_key_triple_environment(&self) -> corim_rs::EnvironmentMap<'a> {
+        self.environment.to_fully_owned()
+    }
+
+    fn get_key_triple_key_list(&self) -> Vec<CryptoKeyTypeChoice<'a>> {
+        self.key_list.iter().map(|k| k.to_fully_owned()).collect()
+    }
+
+    fn get_key_triple_conditions(&self) -> Option<corim_rs::TriplesRecordCondition<'a>> {
+        self.conditions
+            .as_ref()
+            .map(keytriplerecord_condition_deep_copy)
+    }
+}
+
+/// Implementation of [KeyTripleRecord] for identity key triple records.
+impl<'a, 'b> KeyTripleRecord<'a> for IdentityTripleRecord<'b> {
+    fn get_key_triple_record_type(&self) -> KeyType {
+        KeyType::IdentityKey
+    }
+
+    fn get_key_triple_environment(&self) -> corim_rs::EnvironmentMap<'a> {
+        self.environment.to_fully_owned()
+    }
+
+    fn get_key_triple_key_list(&self) -> Vec<CryptoKeyTypeChoice<'a>> {
+        self.key_list.iter().map(|k| k.to_fully_owned()).collect()
+    }
+
+    fn get_key_triple_conditions(&self) -> Option<corim_rs::TriplesRecordCondition<'a>> {
+        self.conditions
+            .as_ref()
+            .map(keytriplerecord_condition_deep_copy)
+    }
+}
+
+impl<'a> KeyRelation<'a> {
+    fn from_key_triple_record<T>(
+        k: &T,
+        profile: &Option<ProfileTypeChoice>,
+        verifier: &[CryptoKeyTypeChoice],
+    ) -> Result<KeyRelation<'a>>
+    where
+        T: KeyTripleRecord<'a>,
+    {
+        // Building Condition ECT
+        let mut cond_builder = KeyEctBuilder::new()
+            .key_type(k.get_key_triple_record_type())
+            .environment(k.get_key_triple_environment())
+            .key_list(k.get_key_triple_key_list());
+
+        // Building Addition ECT
+        let mut add_builder = KeyEctBuilder::new()
+            .key_type(k.get_key_triple_record_type())
+            .environment(k.get_key_triple_environment());
+
+        if let Some(triple_conditions) = k.get_key_triple_conditions()
+            && let Some(key_id) = triple_conditions.mkey
+        {
+            cond_builder = cond_builder.key_id(key_id.clone());
+            add_builder = add_builder.key_id(key_id);
         }
 
-        let addition: Result<Vec<Ect>> = cet
-            .endorsements
-            .iter()
-            .map(|end| {
-                match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(end.condition.to_fully_owned())
-                .element_list(
-                    end.endorsement
-                        .iter()
-                        .map(|e| ElementMap {
-                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                            mval: e.mval.to_fully_owned(),
-                        })
-                        .collect(),
-                )
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()
-            })
-            .collect();
-
-        if let Err(err) = addition {
-            return Err(Error::custom(format!("CET addition error: {}", err)));
+        if let Some(triple_conditions) = k.get_key_triple_conditions()
+            && let Some(authority) = triple_conditions.authorized_by
+        {
+            cond_builder = cond_builder.authority(authority);
         }
 
-        Ok(EvRelation {
-            condition: condition.unwrap(),
-            addition: addition.unwrap(),
+        if let Some(p) = profile {
+            add_builder = add_builder.profile(p.to_fully_owned());
+        }
+
+        // Adding "verifier's authority" as "addition KeyECT authority"
+        add_builder = add_builder.authority(verifier.iter().map(|v| v.to_fully_owned()).collect());
+
+        let condition = cond_builder.build()?;
+        let addition = add_builder.build()?;
+
+        Ok(KeyRelation {
+            condition,
+            addition,
         })
+    }
+
+    pub fn from_identity_key_triple_record<'b>(
+        ikt: &IdentityTripleRecord<'b>,
+        profile: &Option<ProfileTypeChoice<'b>>,
+        signer: &[CryptoKeyTypeChoice<'b>],
+    ) -> Result<KeyRelation<'a>> {
+        Self::from_key_triple_record(ikt, profile, signer)
     }
 
     pub fn from_attest_key_triple_record<'b>(
         akt: &AttestKeyTripleRecord<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
-    ) -> Result<EvRelation<'a>> {
-        let condition = match &akt.conditions {
-            Some(cond) => match &cond.authorized_by {
-                Some(auth_by) => EctBuilder::new()
-                    .authority(auth_by.iter().map(|c| c.to_fully_owned()).collect()),
-                None => EctBuilder::new(),
-            },
-            None => EctBuilder::new(),
-        }
-        .cm_type(CmType::Endorsements)
-        .environment(akt.environment.to_fully_owned())
-        .element_list(
-            akt.key_list
-                .iter()
-                .map(|e| ElementMap {
-                    mkey: match &akt.conditions {
-                        Some(cond) => cond.mkey.as_ref().map(|k| k.to_fully_owned()),
-                        None => None,
-                    },
-                    mval: MeasurementValuesMapBuilder::new()
-                        .add_extension(
-                            INTERP_KEYS_EXT_ID,
-                            TypedCryptoKey {
-                                key: e.to_fully_owned(),
-                                key_type: KeyType::AttestKey,
-                            }
-                            .into(),
-                        )
-                        .build()
-                        .unwrap(),
-                })
-                .collect(),
-        )
-        .build()?;
-
-        let addition = match profile {
-            Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-            None => EctBuilder::new(),
-        }
-        .cm_type(CmType::Endorsements)
-        .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-        .build()?;
-
-        Ok(EvRelation {
-            condition: vec![condition],
-            addition: vec![addition],
-        })
+        signer: &[CryptoKeyTypeChoice<'b>],
+    ) -> Result<KeyRelation<'a>> {
+        Self::from_key_triple_record(akt, profile, signer)
     }
 }
 
-/// Endorsed value series entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvsRelationSeriesEntry<'a> {
-    pub selection: Vec<Ect<'a>>,
-    pub addition: Vec<Ect<'a>>,
-}
-
-/// Endorsed value series relation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvsRelation<'a> {
-    pub condition: Vec<Ect<'a>>,
-    pub series: Vec<EvsRelationSeriesEntry<'a>>,
-}
-
-impl<'a> EvsRelation<'a> {
-    pub fn from_conditional_endorsement_series_triple_record<'b>(
-        cest: &ConditionalEndorsementSeriesTripleRecord<'b>,
-        profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
-    ) -> Result<EvsRelation<'a>> {
-        let condition = EctBuilder::new()
-            .cm_type(CmType::Endorsements)
-            .environment(cest.condition.environment.to_fully_owned())
-            .element_list(
-                cest.condition
-                    .claims_list
-                    .iter()
-                    .map(|e| ElementMap {
-                        mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                        mval: e.mval.to_fully_owned(),
-                    })
-                    .collect(),
-            )
-            .build()?;
-
-        let series: Result<Vec<EvsRelationSeriesEntry>> = cest
-            .series
-            .iter()
-            .map(|csr| {
-                let selection: Ect<'a> = EctBuilder::new()
-                    .cm_type(CmType::Endorsements)
-                    .environment(cest.condition.environment.to_fully_owned())
-                    .element_list(
-                        csr.selection
-                            .iter()
-                            .map(|e| ElementMap {
-                                mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                                mval: e.mval.to_fully_owned(),
-                            })
-                            .collect(),
-                    )
-                    .build()?;
-
-                let addition: Ect<'a> = match profile {
-                    Some(p) => EctBuilder::new().profile(p.to_fully_owned()),
-                    None => EctBuilder::new(),
-                }
-                .cm_type(CmType::Endorsements)
-                .environment(cest.condition.environment.to_fully_owned())
-                .element_list(
-                    csr.addition
-                        .iter()
-                        .map(|e| ElementMap {
-                            mkey: e.mkey.as_ref().map(|k| k.to_fully_owned()),
-                            mval: e.mval.to_fully_owned(),
-                        })
-                        .collect(),
-                )
-                .authority(authority.iter().map(|v| v.to_fully_owned()).collect())
-                .build()?;
-
-                Ok(EvsRelationSeriesEntry {
-                    selection: vec![selection],
-                    addition: vec![addition],
-                })
-            })
-            .collect();
-
-        if let Err(err) = series {
-            return Err(Error::custom(format!("CEST series error: {}", err)));
-        }
-
-        Ok(EvsRelation {
-            condition: vec![condition],
-            series: series.unwrap(),
-        })
-    }
-}
+// TODO: Define Domain Membership and Trust Dependency Relations and
+// transformation functions to populate defined data structure.
 
 /// A store of reference and endorsed values extracted from CoRIMs.
 pub trait CorimStore<'a> {
     type RvIter: Iterator<Item = RvRelation<'a>>;
     type EvIter: Iterator<Item = EvRelation<'a>>;
-    type EvsIter: Iterator<Item = EvsRelation<'a>>;
+    type KeyIter: Iterator<Item = KeyRelation<'a>>;
 
     /// Add values from the specified `Corim` to the store.
     fn add(&mut self, corim: &Corim) -> Result<()>;
@@ -461,18 +319,16 @@ pub trait CorimStore<'a> {
     /// Iterate over extracted [EvRelation]s.
     fn iter_ev(&self) -> Self::EvIter;
 
-    /// Iterate over extracted [EvsRelation]s.
-    fn iter_evs(&self) -> Self::EvsIter;
+    /// Iterate over extracted [KeyRelation]s.
+    fn iter_key(&self) -> Self::KeyIter;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct CorimParseResult<'a> {
-    #[serde(rename = "rv-list")]
     pub rv_list: Vec<RvRelation<'a>>,
-    #[serde(rename = "ev-list")]
     pub ev_list: Vec<EvRelation<'a>>,
-    #[serde(rename = "evs-list")]
-    pub evs_list: Vec<EvsRelation<'a>>,
+    pub key_list: Vec<KeyRelation<'a>>,
 }
 
 impl<'a> CorimParseResult<'a> {
@@ -480,27 +336,28 @@ impl<'a> CorimParseResult<'a> {
         CorimParseResult {
             rv_list: vec![],
             ev_list: vec![],
-            evs_list: vec![],
+            key_list: vec![],
         }
     }
 
     pub fn extend(&mut self, other: CorimParseResult<'a>) {
         self.rv_list.extend(other.rv_list);
         self.ev_list.extend(other.ev_list);
-        self.evs_list.extend(other.evs_list);
+        self.key_list.extend(other.key_list);
     }
 
     pub fn append(&mut self, other: &mut CorimParseResult<'a>) {
         self.rv_list.append(other.rv_list.as_mut());
         self.ev_list.append(other.ev_list.as_mut());
-        self.evs_list.append(other.evs_list.as_mut());
+        self.key_list.append(other.key_list.as_mut());
     }
 
     pub fn update_from_comid<'b>(
         &mut self,
         comid: &ConciseMidTag<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &Vec<CryptoKeyTypeChoice<'b>>,
+        authority: &[CryptoKeyTypeChoice<'b>],
+        verifier_authority: &[CryptoKeyTypeChoice<'b>],
     ) -> Result<()> {
         let mut updated = false;
 
@@ -522,31 +379,12 @@ impl<'a> CorimParseResult<'a> {
             }
         }
 
-        if let Some(cets) = &comid.triples.conditional_endorsement_triples {
-            for cet in cets {
-                self.ev_list
-                    .push(EvRelation::from_conditional_endorsement_triple_record(
-                        cet, profile, authority,
-                    )?);
-                updated = true;
-            }
-        }
-
-        if let Some(cests) = &comid.triples.conditional_endorsement_series_triples {
-            for cest in cests {
-                self.evs_list.push(
-                    EvsRelation::from_conditional_endorsement_series_triple_record(
-                        cest, profile, authority,
-                    )?,
-                );
-                updated = true;
-            }
-        }
-
         if let Some(akts) = &comid.triples.attest_key_triples {
             for akt in akts {
-                self.ev_list.push(EvRelation::from_attest_key_triple_record(
-                    akt, profile, authority,
+                self.key_list.push(KeyRelation::from_key_triple_record(
+                    akt,
+                    profile,
+                    verifier_authority,
                 )?);
                 updated = true;
             }
@@ -567,7 +405,7 @@ impl Default for CorimParseResult<'_> {
 
 impl std::fmt::Debug for CorimParseResult<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = serde_json::to_string_pretty(&self).unwrap();
+        let s = serde_json::to_string_pretty(&self).expect("Input object should be serialisable");
         f.write_str(s.as_str())
     }
 }
@@ -590,20 +428,27 @@ impl<S: KeyStore> MemCorimStore<'_, S> {
 impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
     type RvIter = IntoIter<RvRelation<'a>>;
     type EvIter = IntoIter<EvRelation<'a>>;
-    type EvsIter = IntoIter<EvsRelation<'a>>;
+    type KeyIter = IntoIter<KeyRelation<'a>>;
 
     #[allow(clippy::needless_lifetimes)]
     fn add<'b>(&mut self, corim: &Corim<'b>) -> Result<()> {
-        if let Some(signed) = corim.as_signed_ref() {
-            let key = self.keystore.get(signed.kid.as_slice())?;
-            let mut parsed = parse_corim(corim, &key).map_err(|e| {
-                Error::Parse(format!("CoRIM \"{}\"", signed.corim_map.id), e.to_string())
-            })?;
-            self.items.append(&mut parsed);
-            Ok(())
-        } else {
-            Err(Error::custom("unsigned CoRIMs not supported"))
-        }
+        // Get cryptographic key for signed corim,
+        // for unsigned corims, use verifier's cryptographic key
+        let key: Vec<u8> = match corim.as_signed_ref() {
+            Some(signed) => self.keystore.get(signed.kid.as_slice())?,
+            None => self.keystore.get("verifier-key".as_bytes())?,
+        };
+
+        // Fetch verifier's key to use with Key addition Ect
+        let verifier_key = self.keystore.get("verifier-key".as_bytes())?;
+        let mut parsed = parse_corim(corim, &key, &verifier_key).map_err(|e| {
+            Error::Parse(
+                format!("CoRIM \"{}\"", corim.as_map_ref().id),
+                e.to_string(),
+            )
+        })?;
+        self.items.append(&mut parsed);
+        Ok(())
     }
 
     fn iter_rv(&self) -> Self::RvIter {
@@ -614,58 +459,142 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
         self.items.ev_list.clone().into_iter()
     }
 
-    fn iter_evs(&self) -> Self::EvsIter {
-        self.items.evs_list.clone().into_iter()
+    fn iter_key(&self) -> Self::KeyIter {
+        self.items.key_list.clone().into_iter()
     }
 }
 
+/// Function to parse corims and add to corim-store.
+/// `key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
+/// In case of unsigned corim, `key` and `verifier_key` are same.
 #[allow(clippy::needless_lifetimes)]
-pub fn parse_corim<'a, 'b>(corim: &Corim<'a>, key: &[u8]) -> Result<CorimParseResult<'b>> {
-    let verifier = OpensslSigner::public_key_from_pem(key)?;
-    let authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
+pub fn parse_corim<'a, 'b>(
+    corim: &Corim<'a>,
+    key: &[u8],
+    verifier_key: &[u8],
+) -> Result<CorimParseResult<'b>> {
+    let corim_verifier = OpensslSigner::public_key_from_pem(key)?;
+    let authority = vec![CryptoKeyTypeChoice::CoseKey(
+        corim_verifier.to_cose_key().into(),
+    )];
 
-    if let Corim::Signed(signed) = corim {
-        match signed.verify_signature(verifier) {
-            Ok(_) => {
-                let profile = signed.corim_map.profile.clone();
-                let mut result = CorimParseResult::new();
+    // key related to Verifier (person using CoVER)
+    let verifier = OpensslSigner::public_key_from_pem(verifier_key)?;
+    let verifier_authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
 
-                for tag in &signed.corim_map.tags {
-                    if let ConciseTagTypeChoice::Mid(tagged_comid) = tag {
-                        result.update_from_comid(tagged_comid.as_ref(), &profile, &authority)?;
-                    }
-                }
-
-                Ok(result)
+    let corim_map = match corim {
+        Corim::Signed(signed) => match signed.verify_signature(corim_verifier) {
+            Ok(_) => &signed.corim_map,
+            Err(err) => {
+                return Err(Error::custom(format!(
+                    "signature verification failed: {}",
+                    err
+                )));
             }
-            Err(err) => Err(Error::custom(format!(
-                "signature verification failed: {}",
-                err
-            ))),
+        },
+        Corim::Unsigned(corim_map) => corim_map,
+    };
+
+    let profile = corim_map.profile.clone();
+    let mut result = CorimParseResult::new();
+
+    for tag in &corim_map.tags {
+        if let ConciseTagTypeChoice::Mid(tagged_comid) = tag {
+            result.update_from_comid(
+                tagged_comid.as_ref(),
+                &profile,
+                &authority,
+                &verifier_authority,
+            )?;
         }
-    } else {
-        Err(Error::custom("unsigned CoRIMs not supported"))
     }
+
+    Ok(result)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::keystore::MemKeyStore;
+    use corim_rs::triples::EnvironmentMap;
 
     #[test]
-    fn parse_corim_test() {
-        let token = include_bytes!("../../test/corim/signed-corim-cca-ref-plat.cbor");
-        let token_ta = include_bytes!("../../test/corim/signed-corim-cca-ta.cbor");
+    fn rv_triple_record_creates_condition_and_addition_ects() {
+        let corim_bytes = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
+        let key = include_bytes!("../../test/corim/key.pub.pem");
+        let parsed_corim = Corim::from_cbor(corim_bytes.as_slice()).unwrap();
+        let corim_map = &parsed_corim.as_signed().unwrap().corim_map;
+        let profile = corim_map.profile.clone();
+        let verifier = OpensslSigner::public_key_from_pem(key).unwrap();
+        let authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
+
+        let env = EnvironmentMap::default();
+        let mut rv_triple = ReferenceTripleRecord {
+            ref_env: env,
+            ref_claims: vec![],
+        };
+        for tag in &corim_map.tags {
+            if let ConciseTagTypeChoice::Mid(tagged_comid) = tag
+                && tagged_comid.triples.reference_triples.is_some()
+            {
+                rv_triple = tagged_comid
+                    .as_ref()
+                    .triples
+                    .reference_triples
+                    .clone()
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .clone();
+                break;
+            }
+        }
+        let relation =
+            RvRelation::from_reference_triple_record(&rv_triple, &profile, &authority).unwrap();
+
+        assert!(relation.addition.get_profile().is_some());
+        assert!(!relation.condition.element_list.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_signed_corim() {
+        let token = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
+        let token_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
+        keystore.add("verifier-key".as_bytes(), key).unwrap();
 
         let mut store = MemCorimStore::new(keystore);
         store.add_bytes(token.as_slice()).unwrap();
         store.add_bytes(token_ta.as_slice()).unwrap();
 
-        println!("{:?}", store.items);
+        assert!(!store.items.rv_list.is_empty());
+        assert!(!store.items.key_list.is_empty());
+        // Check if addition KeyECT has authority set.
+        assert!(
+            store
+                .items
+                .key_list
+                .first()
+                .unwrap()
+                .addition
+                .get_authority()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn parse_unsigned_corim() {
+        let token = include_bytes!("../../test/corim/corim-cca-plat-rv.cbor");
+        let key = include_bytes!("../../test/corim/key.pub.pem");
+
+        let mut keystore = MemKeyStore::new();
+        keystore.add("verifier-key".as_bytes(), key).unwrap();
+
+        let mut store = MemCorimStore::new(keystore);
+        store.add_bytes(token.as_slice()).unwrap();
+        assert!(!store.items.rv_list.is_empty());
     }
 }
