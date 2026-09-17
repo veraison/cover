@@ -13,7 +13,7 @@ use base64::{
 use clap::{ArgAction, Parser};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use corim_rs::Corim;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 
 use cover::{
     cca::CcaScheme,
@@ -38,11 +38,11 @@ struct Cli {
     /// <kid>:<path>, i.e. the key ID prefix to the path with a colon. If the key ID is omitted, the
     /// name (not full path) of the file will be used as the key ID. The key ID is matched to the
     /// kid in the CoRIM in order to identify the key that should be used to verify it.
-    #[arg(name = "key", short, long, action = ArgAction::Append)]
-    keys: Vec<String>,
+    #[arg(short = 'k', long = "corim-key", action = ArgAction::Append)]
+    corim_keys: Vec<String>,
 
-    /// Public key of Verifier/user of library in PEM format. This key is used as authority of attest/identiy key
-    /// during internal processing and if unsigned corim is provided then same key is used as authority for CoRIMs.
+    /// Public key of Verifier/user of library in PEM format. This key is used as authority of identity/attest key
+    /// during internal processing and if unsigned CoRIMs are provided then same key is used as authority for CoRIMs.
     #[arg(long = "verifier-key")]
     verifier_key: String,
 
@@ -122,7 +122,7 @@ fn verify(args: &Cli) -> Result<()> {
 
     let mut key_store = MemKeyStore::new();
 
-    for key_path in &args.keys {
+    for key_path in &args.corim_keys {
         debug!("reading CoRIM verification key from \"{}\"", key_path);
         let (kid, key) = read_key(key_path)?;
         key_store.add(kid.as_bytes(), key.as_ref())?;
@@ -130,6 +130,8 @@ fn verify(args: &Cli) -> Result<()> {
 
     debug!("reading user/verfier key from \"{}\"", args.verifier_key);
     let (_, verifier_key) = read_key(&args.verifier_key)?;
+    // to make kid of verifier's pub key known beforehand, hard-coded kid is used below,
+    // so that verifier key can be retreived later
     key_store.add("verifier-key".as_bytes(), &verifier_key)?;
 
     let mut corim_store = MemCorimStore::new(key_store);
@@ -140,16 +142,14 @@ fn verify(args: &Cli) -> Result<()> {
         debug!("loading CoRIM {:?}", corim);
         let corim_bytes = fs::read(corim).map_err(Error::custom)?;
         let parsed_corim = Corim::from_cbor(corim_bytes.as_slice())?;
-        if schemes.values().any(|scheme| {
-            scheme
-                .as_ref()
-                .supports_corim(&parsed_corim)
-                .unwrap_or(false)
-        }) {
+        if schemes
+            .values()
+            .any(|scheme| scheme.as_ref().supports_corim(&parsed_corim))
+        {
             corim_store.add(&parsed_corim)?;
             corim_loaded = true;
         } else {
-            info!(
+            warn!(
                 "skipping CoRIM {:?} because it does not match a supported scheme profile or is expired",
                 corim
             );
@@ -164,16 +164,14 @@ fn verify(args: &Cli) -> Result<()> {
                     info!("loading CoRIM {:?}", entry.path());
                     let corim_bytes = fs::read(entry.path()).map_err(Error::custom)?;
                     let parsed_corim = Corim::from_cbor(corim_bytes.as_slice())?;
-                    if schemes.values().any(|scheme| {
-                        scheme
-                            .as_ref()
-                            .supports_corim(&parsed_corim)
-                            .unwrap_or(false)
-                    }) {
+                    if schemes
+                        .values()
+                        .any(|scheme| scheme.as_ref().supports_corim(&parsed_corim))
+                    {
                         corim_store.add(&parsed_corim)?;
                         corim_loaded = true;
                     } else {
-                        info!(
+                        warn!(
                             "skipping CoRIM {:?} because it does not match a supported scheme profile or is expired",
                             entry.path()
                         );

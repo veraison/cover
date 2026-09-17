@@ -2,8 +2,6 @@ use log::warn;
 use std::vec::IntoIter;
 
 use crate::ect::ElementMap;
-
-use chrono::DateTime;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use corim_rs::{
@@ -23,37 +21,39 @@ pub fn is_rim_valid(rim_validity: Option<&ValidityMap>) -> bool {
         return true;
     };
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        warn!("System time is before UNIX epoch");
+        return false;
+    };
+
+    let now = now.as_secs();
+
+    let Some(not_after) = u64::try_from(validity.not_after.as_i128()).ok() else {
+        warn!("Invalid CoRIM 'not_after' timestamp");
+        return false;
+    };
 
     let not_before = validity
         .not_before
         .as_ref()
-        .map(|t| t.as_i128() as u64)
+        .and_then(|t| u64::try_from(t.as_i128()).ok())
         .unwrap_or(0);
-
-    let not_after = validity.not_after.as_i128() as u64;
 
     if not_before > not_after {
         warn!(
-            "Corim validity, Not before: {} is greater than Not After: {}",
-            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none"),
-            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
+            "CoRIM is invalid: 'not_before' ({}) is greater than 'not_after' ({})",
+            not_before, not_after
         );
         return false;
-    } else if now > not_after {
-        warn!(
-            "CoRIM expired on: {}",
-            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
-        );
+    }
+
+    if now > not_after {
+        warn!("CoRIM expired at timestamp: {}", not_after);
         return false;
-    } else if now < not_before {
-        warn!(
-            "CoRIM is not active till: {}",
-            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none")
-        );
+    }
+
+    if now < not_before {
+        warn!("CoRIM is not active until timestamp: {}", not_before);
         return false;
     }
 
@@ -233,7 +233,7 @@ impl<'a> KeyRelation<'a> {
     fn from_triple_record<T>(
         k: &T,
         profile: &Option<ProfileTypeChoice>,
-        verifier: &[CryptoKeyTypeChoice],
+        verifier_authority: &[CryptoKeyTypeChoice],
     ) -> Result<KeyRelation<'a>>
     where
         T: KeyTripleRecord<'a>,
@@ -265,7 +265,12 @@ impl<'a> KeyRelation<'a> {
         }
 
         // Adding "verifier's authority" as "addition KeyECT authority"
-        add_builder = add_builder.authority(verifier.iter().map(|v| v.to_fully_owned()).collect());
+        add_builder = add_builder.authority(
+            verifier_authority
+                .iter()
+                .map(|v| v.to_fully_owned())
+                .collect(),
+        );
 
         let condition = cond_builder.build()?;
         let addition = add_builder.build()?;
@@ -353,8 +358,8 @@ impl<'a> CorimParseResult<'a> {
     pub fn update_from_comid<'b>(
         &mut self,
         comid: &ConciseMidTag<'b>,
-        profile: &Option<ProfileTypeChoice<'b>>,
-        authority: &[CryptoKeyTypeChoice<'b>],
+        corim_profile: &Option<ProfileTypeChoice<'b>>,
+        corim_authority: &[CryptoKeyTypeChoice<'b>],
         verifier_authority: &[CryptoKeyTypeChoice<'b>],
     ) -> Result<()> {
         let mut updated = false;
@@ -362,7 +367,9 @@ impl<'a> CorimParseResult<'a> {
         if let Some(rvts) = &comid.triples.reference_triples {
             for rvt in rvts {
                 self.rv_list.push(RvRelation::from_reference_triple_record(
-                    rvt, profile, authority,
+                    rvt,
+                    corim_profile,
+                    corim_authority,
                 )?);
                 updated = true;
             }
@@ -371,7 +378,9 @@ impl<'a> CorimParseResult<'a> {
         if let Some(evts) = &comid.triples.endorsed_triples {
             for evt in evts {
                 self.ev_list.push(EvRelation::from_endorsed_triple_record(
-                    evt, profile, authority,
+                    evt,
+                    corim_profile,
+                    corim_authority,
                 )?);
                 updated = true;
             }
@@ -381,7 +390,7 @@ impl<'a> CorimParseResult<'a> {
             for akt in akts {
                 self.key_list.push(KeyRelation::from_triple_record(
                     akt,
-                    profile,
+                    corim_profile,
                     verifier_authority,
                 )?);
                 updated = true;
@@ -432,14 +441,14 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
     fn add<'b>(&mut self, corim: &Corim<'b>) -> Result<()> {
         // Get cryptographic key for signed corim,
         // for unsigned corims, use verifier's cryptographic key
-        let key: Vec<u8> = match corim.as_signed_ref() {
+        let corim_key: Vec<u8> = match corim.as_signed_ref() {
             Some(signed) => self.keystore.get(signed.kid.as_slice())?,
             None => self.keystore.get("verifier-key".as_bytes())?,
         };
 
         // Fetch verifier's key to use with Key addition Ect
         let verifier_key = self.keystore.get("verifier-key".as_bytes())?;
-        let mut parsed = parse_corim(corim, &key, &verifier_key).map_err(|e| {
+        let mut parsed = parse_corim(corim, &corim_key, &verifier_key).map_err(|e| {
             Error::Parse(
                 format!("CoRIM \"{}\"", corim.as_map_ref().id),
                 e.to_string(),
@@ -463,16 +472,16 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
 }
 
 /// Function to parse corims and add to corim-store.
-/// `key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
-/// In case of unsigned corim, `key` and `verifier_key` are same.
+/// `corim_key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
+/// In case of unsigned corim, `corim_key` and `verifier_key` are same.
 #[allow(clippy::needless_lifetimes)]
 pub fn parse_corim<'a, 'b>(
     corim: &Corim<'a>,
-    key: &[u8],
+    corim_key: &[u8],
     verifier_key: &[u8],
 ) -> Result<CorimParseResult<'b>> {
-    let corim_verifier = OpensslSigner::public_key_from_pem(key)?;
-    let authority = vec![CryptoKeyTypeChoice::CoseKey(
+    let corim_verifier = OpensslSigner::public_key_from_pem(corim_key)?;
+    let corim_authority = vec![CryptoKeyTypeChoice::CoseKey(
         corim_verifier.to_cose_key().into(),
     )];
 
@@ -493,15 +502,15 @@ pub fn parse_corim<'a, 'b>(
         Corim::Unsigned(corim_map) => corim_map,
     };
 
-    let profile = corim_map.profile.clone();
+    let corim_profile = corim_map.profile.clone();
     let mut result = CorimParseResult::new();
 
     for tag in &corim_map.tags {
         if let ConciseTagTypeChoice::Mid(tagged_comid) = tag {
             result.update_from_comid(
                 tagged_comid.as_ref(),
-                &profile,
-                &authority,
+                &corim_profile,
+                &corim_authority,
                 &verifier_authority,
             )?;
         }
@@ -519,11 +528,11 @@ mod test {
     #[test]
     fn rv_triple_record_creates_condition_and_addition_ects() {
         let corim_bytes = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
-        let key = include_bytes!("../../test/corim/key.pub.pem");
+        let corim_key = include_bytes!("../../test/corim/key.pub.pem");
         let parsed_corim = Corim::from_cbor(corim_bytes.as_slice()).unwrap();
         let corim_map = &parsed_corim.as_signed().unwrap().corim_map;
         let profile = corim_map.profile.clone();
-        let verifier = OpensslSigner::public_key_from_pem(key).unwrap();
+        let verifier = OpensslSigner::public_key_from_pem(corim_key).unwrap();
         let authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
 
         let env = EnvironmentMap::default();
@@ -558,6 +567,7 @@ mod test {
     fn parse_signed_corim() {
         let token = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
         let token_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
+        let token_ev = include_bytes!("../../test/corim/signed-corim-endval.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
 
         let mut keystore = MemKeyStore::new();
@@ -567,9 +577,12 @@ mod test {
         let mut store = MemCorimStore::new(keystore);
         store.add_bytes(token.as_slice()).unwrap();
         store.add_bytes(token_ta.as_slice()).unwrap();
+        store.add_bytes(token_ev.as_slice()).unwrap();
 
         assert!(!store.items.rv_list.is_empty());
         assert!(!store.items.key_list.is_empty());
+        assert!(!store.items.ev_list.is_empty(),);
+
         // Check if addition KeyECT has authority set.
         assert!(
             store

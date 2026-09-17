@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 
 use corim_rs::{Corim, CryptoKeyTypeChoice, EnvironmentMap, ProfileTypeChoice};
 
@@ -44,13 +44,13 @@ pub trait Scheme {
                 return true;
             }
         }
-        info!("Unsupported profile \"{}\" ", corim_profile);
+        debug!("Unsupported profile \"{}\" ", corim_profile);
         false
     }
 
-    fn supports_corim(&self, corim: &Corim<'_>) -> Result<bool> {
-        Ok(self.supports_profile(corim.as_map_ref().profile.as_ref())
-            && is_rim_valid(corim.as_map_ref().rim_validity.as_ref()))
+    fn supports_corim(&self, corim: &Corim<'_>) -> bool {
+        self.supports_profile(corim.as_map_ref().profile.as_ref())
+            && is_rim_valid(corim.as_map_ref().rim_validity.as_ref())
     }
 
     /// Indicates whether the specified input matches the evidence format expected by the scheme.
@@ -64,7 +64,7 @@ pub trait Scheme {
     fn validate_and_parse_evidence<'a>(
         &self,
         evidence: &[u8],
-        trust_anchor: &CryptoKeyTypeChoice<'a>,
+        trust_anchors: &[CryptoKeyTypeChoice<'a>],
     ) -> Result<Vec<Ect<'a>>>;
     /// Get [Policy] instances associated with the scheme.
     fn get_policies(&self) -> Vec<Policy>;

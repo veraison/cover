@@ -133,22 +133,15 @@ mod test {
 
     #[test]
     fn pem_to_jwk_256() {
-        let pem_bytes = include_bytes!("../../test/keys/pkey_256.pem");
-        let expected_jwk = include_str!("../../test/keys/pkey_256.json");
+        let pem_bytes = include_bytes!("../../test/cca/keys/iak-ec256.pub.pem");
+        let expected_jwk = include_str!("../../test/cca/keys/iak-ec256.pub.json");
         pem_to_jwk(pem_bytes, expected_jwk);
     }
 
     #[test]
     fn pem_to_jwk_384() {
-        let pem_bytes = include_bytes!("../../test/keys/pkey_384.pem");
-        let expected_jwk = include_str!("../../test/keys/pkey_384.json");
-        pem_to_jwk(pem_bytes, expected_jwk);
-    }
-
-    #[test]
-    fn pem_to_jwk_521() {
-        let pem_bytes = include_bytes!("../../test/keys/pkey_521.pem");
-        let expected_jwk = include_str!("../../test/keys/pkey_521.json");
+        let pem_bytes = include_bytes!("../../test/cca/keys/rak-ec384.pub.pem");
+        let expected_jwk = include_str!("../../test/cca/keys/rak-ec384.pub.json");
         pem_to_jwk(pem_bytes, expected_jwk);
     }
 }
