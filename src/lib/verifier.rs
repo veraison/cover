@@ -8,6 +8,7 @@ use base64::{self, Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cmw::{CMW, Indicator, Mime, Monad};
 use corim_rs::{ConciseRimTypeChoice, CryptoKeyTypeChoice, EnvironmentMap};
 use ear::{Appraisal, EAR_PROFILE, Ear, VerifierID};
+use log::warn;
 
 use crate::{
     corim::CorimStore,
@@ -74,9 +75,9 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
         let ta_id = scheme.get_trust_anchor_id(evidence)?;
 
-        let trust_anchor = self.get_trust_anchor(&ta_id)?;
+        let trust_anchors = self.get_trust_anchors(&ta_id)?;
 
-        let mut evidence_ects = scheme.validate_and_parse_evidence(evidence, &trust_anchor)?;
+        let mut evidence_ects = scheme.validate_and_parse_evidence(evidence, &trust_anchors)?;
 
         let mut acs = Vec::new();
         acs.append(&mut evidence_ects);
@@ -104,7 +105,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
             developer: "https://veraison-project.org".to_string(),
         };
         ear.raw_evidence = Some(CMW::Monad(Monad::new_media_type(
-            Mime::from_str("application/eat-cwt").unwrap(),
+            Mime::from_str("application/eat+cwt").unwrap(),
             evidence.to_vec(),
             Some(Indicator::EVIDENCE),
         )?));
@@ -121,22 +122,22 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
     /// Add a CoRIM to the verifier's store.
     pub fn add_corim(&mut self, corim: &ConciseRimTypeChoice<'a>) -> Result<()> {
-        self.corims.add(corim)
+        let supported = self
+            .schemes
+            .values()
+            .any(|scheme| scheme.as_ref().supports_corim(corim));
+
+        if supported {
+            self.corims.add(corim)
+        } else {
+            Err(Error::Custom("unsupported CoRIM input".to_string()))
+        }
     }
 
     /// Add CBOR-encoded CoRIM bytes to the verifier's store.
     pub fn add_corim_bytes(&mut self, corim: &'a [u8]) -> Result<()> {
         let corim = ConciseRimTypeChoice::from_cbor(corim)?;
-        let supported = self
-            .schemes
-            .values()
-            .any(|scheme| scheme.as_ref().supports_corim(&corim).unwrap_or(false));
-
-        if supported {
-            self.corims.add(&corim)
-        } else {
-            Ok(())
-        }
+        self.add_corim(&corim)
     }
 
     /// Add an attestation [Scheme] to the verifier.
@@ -207,22 +208,16 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         self.schemes.get(name).map(|s| s.as_ref())
     }
 
-    fn get_trust_anchor(&self, id: &EnvironmentMap<'a>) -> Result<CryptoKeyTypeChoice<'a>> {
-        let mut found: Option<CryptoKeyTypeChoice> = None;
-
+    fn get_trust_anchors(&self, id: &EnvironmentMap<'a>) -> Result<Vec<CryptoKeyTypeChoice<'a>>> {
         for kv in self.corims.iter_key() {
             let cond = kv.condition;
             if cond.get_environment().as_ref().unwrap().matches(id)
-                && let Some(elts) = &cond.key_list
+                && let Some(elts) = cond.key_list
             {
-                found = elts.first().cloned();
+                return Ok(elts);
             }
         }
-
-        match found {
-            Some(key) => Ok(key),
-            None => Err(Error::custom(format!("no trust anchor found for {:?}", id))),
-        }
+        Err(Error::custom(format!("no trust anchor found for {:?}", id)))
     }
 }
 
@@ -236,7 +231,16 @@ fn ect_match(condition: &ElementEct, acs_ect: &ElementEct) -> bool {
         return false;
     }
 
-    for cond_elt in condition.element_list.as_ref().unwrap() {
+    let Some(condition_elements) = condition
+        .element_list
+        .as_ref()
+        .filter(|elts| !elts.is_empty())
+    else {
+        warn!("condition element list is empty; treating as a match");
+        return true;
+    };
+
+    for cond_elt in condition_elements {
         let mut elt_matched = false;
 
         for acs_elt in acs_ect.element_list.as_ref().unwrap() {
@@ -283,7 +287,7 @@ mod test {
         let corim_rv_realm = include_bytes!("../../test/corim/signed-corim-cca-realm-rv.cbor");
         let corim_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
-        let evidence = include_bytes!("../../test/cca/cca-token-01.cbor");
+        let evidence = include_bytes!("../../test/cca/cca-token-04.cbor");
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();

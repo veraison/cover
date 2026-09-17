@@ -1,0 +1,52 @@
+{
+    "id": "284e6c3e-5d9f-4f6b-851f-5a4247f243a7",
+    "tags": [
+        {
+            "type": "comid",
+            "value": {
+                "tag-identity": {
+                    "tag-id": "3f06af63-a93c-11e4-9797-00505690773f"
+                },
+                "entities": [
+                    {
+                        "entity-name": "ACME Inc.",
+                        "reg-id": {
+                            "type": "uri",
+                            "value": "https://acme.example"
+                        },
+                        "role": [
+                            "tag-creator"
+                        ]
+                    }
+                ],
+                "triples": {
+                    "endorsed-triples": [
+                        [
+                            {
+                                "class": {
+                                    "class-id": {
+                                        "type": "uuid",
+                                        "value": "67b28b6c-34cc-40a1-9117-ab5b05911e37"
+                                    },
+                                    "vendor": "ACME Inc.",
+                                    "model": "ACME RoadRunner Root of Trust",
+                                    "layer": 0
+                                }
+                            },
+                            [
+                                {
+                                    "mval": {
+                                        "svn": {
+                                            "type": "svn",
+                                            "value": 1
+                                        }
+                                    }
+                                }
+                            ]
+                        ]
+                    ]
+                }
+            }
+        }
+    ]
+}

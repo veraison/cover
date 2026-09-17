@@ -107,11 +107,6 @@ impl<'de> Deserialize<'de> for CmType {
     }
 }
 
-// helper function to skip serialization of empty vector
-fn vec_is_empty_or_none<T>(vec: &Option<Vec<T>>) -> bool {
-    vec.as_ref().is_none_or(Vec::is_empty)
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ElementMap<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,7 +163,8 @@ impl<'a> Ect<'a> {
         }
     }
 
-    /// Merge similar ECTs according to the definition defined in draft-ietf-rats-corim-11.
+    /// Merge similar Element ECTs according to the definition defined in draft-ietf-rats-corim-11
+    /// [8.2.2.1.1. Element ECT](https://datatracker.ietf.org/doc/html/draft-ietf-rats-corim-11#name-element-ect)
     pub fn merge_similar_ects(ects: Vec<Self>) -> Vec<Self> {
         let mut element_ects: Vec<ElementEct<'_>> = Vec::with_capacity(ects.len());
         let mut non_element_ects: Vec<Ect<'a>> = Vec::new();
@@ -223,7 +219,7 @@ pub struct EctCommon<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub environment: Option<EnvironmentMap<'a>>,
     /// Authority that issued this ECT
-    #[serde(skip_serializing_if = "vec_is_empty_or_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authority: Option<Vec<CryptoKeyTypeChoice<'a>>>,
     /// The profile associated with this tuple.
     #[serde(skip_serializing_if = "Option::is_none")]

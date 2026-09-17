@@ -13,19 +13,17 @@ This implementation is intended as a Proof-of-Concept only. It has the following
 
 The verification flow proceeds as follows.
 
-- CoRIMs are processed by validating their signatures for signed CoRIMs and extracting contained 
-  measurements into the "corim store" as RV (reference values), EV (endorsed values) or Key relations.
-- Unsigned CoRIM verification is not done and it is assumed that user has already verified the
-  CoRIMs before passing into the verifier.
-- The signature on the evidence is verified using a trust anchor obtained from the corim store
-  based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
-  is used. Evidence claims are then extracted as ECT (environment-claims tuple) records.
+- CoRIMs are processed by validating their signatures for signed CoRIMs and extracting contained measurements into the "corim store" as RV (reference values) or Key relations.
+- Unsigned CoRIM verification is not done and it is assumed that user has already verified the CoRIMs before passing into the verifier.
+- The signature on the evidence is verified using a trust anchor obtained from the corim store based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID and implementation ID are used to look up the trust anchor in the corim store. Evidence claims are then extracted as ECT (environment-claims tuple) records.
 - The evidence ECTs are then matched to the relations in the corim store. This results in the
   ACS (appraisal claims set) &mdash; a vector of ECT records containing evidence claims and matched
   reference values and endorsements.
 - The ACS is used as an input into the policy engine along with scheme-specific policies. Each
   policy results in an appraisal containing an AR4SI\[[3]\] trust vector.
 - The appraisals are added to an attestation result in EAR\[[2]\] format.
+
+>NOTE: Since, CoVER currently only support ARM CCA scheme, implementation do not parse identity-key triples since it is not used in ARM CCA. It can be extended as more schemes are added into it. 
 
 [1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-11.html#name-reference-verifier
 [2]: https://www.ietf.org/archive/id/draft-ietf-rats-ear-04.html
@@ -59,9 +57,9 @@ Verification flow consists of the following components:
     // load CoRIMs
     let mut store = MemCorimStore::new(keystore);
     for path in [
-        "test/corim/signed-corim-cca-ref-plat.cbor",
-        "test/corim/signed-corim-cca-ref-realm.cbor",
-        "test/corim/signed-corim-cca-ta.cbor",
+        "test/corim/signed-corim-cca-plat-rv.cbor",
+        "test/corim/signed-corim-cca-realm-rv.cbor",
+        "test/corim/signed-corim-cca-plat-ta.cbor",
     ] {
         let bytes = fs::read(path).unwrap();
         store.add_bytes(&bytes).unwrap();
@@ -76,7 +74,7 @@ Verification flow consists of the following components:
     let verifier = Verifier::new(store, schemes);
 
     // load evidence
-    let evidence = fs::read("test/cca/cca-token-01.cbor").unwrap();
+    let evidence = fs::read("test/cca/cca-token-04.cbor").unwrap();
 
     /// appraise evidence and produce the attestation result
     let result = verifier.verify("cca", evidence.as_slice(), None).unwrap();
@@ -97,10 +95,10 @@ Verification flow consists of the following components:
     target/debug/cover-cli  --corim-dir test/corim/ \
         # Public key used to verify signed CoRIM signatures
         --key test/corim/key.pub.pem 
-        # For unsigned corim and attest/identity key, this is used as verifying authority
+        # For unsigned corim and attest/identity key triples, this is used as verifying authority
         --verifier-key test/corim/key.pub.pem \ 
-        --pretty  test/cca/cca-token-01.cbor \
-        --nonce adfadaewafewr32r --output cca-token-01.ear.json
+        --pretty  test/cca/cca-token-04.cbor \
+        --nonce adfadaewafewr32r --output cca-token-04.ear.json
 ```
 
 use `-h` to see the full list of command line arguments.

@@ -94,8 +94,7 @@ impl MemKeyStore {
 
 impl KeyStore for MemKeyStore {
     fn add(&mut self, kid: &[u8], key: &[u8]) -> Result<()> {
-        debug!("Key kid : \"{}\"", str::from_utf8(kid).unwrap());
-        debug!("Adding into Memory Key Store..");
+        debug!("Adding into Memory Key Store, kid: {:x?}", kid);
         self.items.insert(kid.to_vec(), key.to_vec());
         Ok(())
     }

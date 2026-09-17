@@ -1,6 +1,6 @@
 {
-    "ear.status": 0,
-    "ear.trustworthiness-vector": {
+    "ear_status": 0,
+    "ear_trustworthiness_vector": {
         "instance-identity": 0,
         "configuration": 0,
         "executables": 0,
@@ -10,8 +10,12 @@
         "storage-opaque": 0,
         "sourced-data": 0
     },
-    "ear.veraison.policy-claims": {
+    "ear_verifier_claims": {
         "foo": 1,
         "bar": 2
-    }
+    },
+    "ear_appraisal_policy_ids": [
+        "preamble",
+        "added-claims"
+    ]
 }
