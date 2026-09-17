@@ -130,7 +130,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         let supported = self
             .schemes
             .values()
-            .any(|scheme| scheme.as_ref().supports_corim(&corim).unwrap_or(false));
+            .any(|scheme| scheme.as_ref().supports_corim(&corim));
 
         if supported {
             self.corims.add(&corim)
@@ -283,7 +283,7 @@ mod test {
         let corim_rv_realm = include_bytes!("../../test/corim/signed-corim-cca-realm-rv.cbor");
         let corim_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
-        let evidence = include_bytes!("../../test/cca/cca-token-01.cbor");
+        let evidence = include_bytes!("../../test/cca/cca-token-03.cbor");
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();

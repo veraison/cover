@@ -56,6 +56,7 @@ fn jwk_algorithm_to_cose(alg: jwk::KeyAlgorithm) -> Result<CoseAlgorithm, Error>
         jwk::KeyAlgorithm::UNKNOWN_ALGORITHM => {
             Err(Error::Custom(format!("Unknowm algorithm {}", alg)))
         }
+        _ => todo!(),
     }
 }
 
@@ -65,6 +66,7 @@ fn jwk_ec_curve_to_cose(curve: &jwk::EllipticCurve) -> CoseEllipticCurve {
         jwk::EllipticCurve::P384 => CoseEllipticCurve::P384,
         jwk::EllipticCurve::P521 => CoseEllipticCurve::P521,
         jwk::EllipticCurve::Ed25519 => CoseEllipticCurve::Ed25519,
+        _ => todo!(),
     }
 }
 
@@ -148,6 +150,7 @@ pub fn jwk_to_crypto_key(jwk: jwk::Jwk) -> Result<CryptoKeyTypeChoice<'static>, 
         jwk::AlgorithmParameters::RSA(_) => {
             return Err(Error::custom("RSA keys are not supported"));
         }
+        _ => todo!(),
     };
 
     Ok(CryptoKeyTypeChoice::CoseKey(CoseKeyType::from(

@@ -48,9 +48,9 @@ pub trait Scheme {
         false
     }
 
-    fn supports_corim(&self, corim: &Corim<'_>) -> Result<bool> {
-        Ok(self.supports_profile(corim.as_map_ref().profile.as_ref())
-            && is_rim_valid(corim.as_map_ref().rim_validity.as_ref()))
+    fn supports_corim(&self, corim: &Corim<'_>) -> bool {
+        self.supports_profile(corim.as_map_ref().profile.as_ref())
+            && is_rim_valid(corim.as_map_ref().rim_validity.as_ref())
     }
 
     /// Indicates whether the specified input matches the evidence format expected by the scheme.

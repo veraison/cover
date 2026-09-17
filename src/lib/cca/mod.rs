@@ -4,7 +4,8 @@ use std::borrow::Cow;
 
 use ccatoken::{
     store::{Cpak, ITrustAnchorStore, MemoTrustAnchorStore},
-    token::{Evidence, Platform, Realm},
+    token::{Evidence, PlatformClaims, RealmClaims},
+    token::{PLATFORM_PROFILE, PLATFORM_PROFILE_2024, REALM_PROFILE, REALM_PROFILE_2024},
 };
 use corim_rs::{
     CryptoKeyTypeChoice, EnvironmentMap,
@@ -83,13 +84,13 @@ impl Scheme for CcaScheme {
             .class(
                 ClassMapBuilder::default()
                     .class_id(ClassIdTypeChoice::Bytes(
-                        evidence.platform_claims.impl_id.as_slice().into(),
+                        evidence.platform_claims.impl_id().as_slice().into(),
                     ))
                     .build()
                     .unwrap(),
             )
             .instance(InstanceIdTypeChoice::Ueid(TaggedUeidType::from(
-                UeidType::try_from(evidence.platform_claims.inst_id.as_slice())?,
+                UeidType::try_from(evidence.platform_claims.inst_id().as_slice())?,
             )))
             .build()
             .map_err(Error::custom)
@@ -146,8 +147,8 @@ fn create_store(evidence: &Evidence, key: &str) -> Result<MemoTrustAnchorStore, 
     let store_contents = vec![Cpak {
         raw_pkey: raw_key,
         pkey: None,
-        impl_id: evidence.platform_claims.impl_id,
-        inst_id: evidence.platform_claims.inst_id,
+        impl_id: *evidence.platform_claims.impl_id(),
+        inst_id: *evidence.platform_claims.inst_id(),
     }];
 
     let json = serde_json::to_string(&store_contents).map_err(Error::custom)?;
@@ -171,8 +172,8 @@ fn cca_to_ects<'a, S: ITrustAnchorStore>(
         return Err(Error::SignatureValidation);
     }
 
-    let inst_id = evidence.platform_claims.inst_id;
-    let authority = match ta_store.lookup(&inst_id) {
+    let inst_id = evidence.platform_claims.inst_id();
+    let authority = match ta_store.lookup(inst_id) {
         None => Err(Error::custom("could not find CPAK")),
         Some(cpak) => match cpak.pkey {
             Some(key) => jwk_to_crypto_key(key),
@@ -187,13 +188,15 @@ fn cca_to_ects<'a, S: ITrustAnchorStore>(
 }
 
 fn platform_to_ect<'a>(
-    plat: &Platform,
+    plat: &PlatformClaims,
     cpak_pub: &CryptoKeyTypeChoice<'a>,
 ) -> Result<Ect<'a>, Error> {
-    // TODO:
-    // Implement platform evidence profile check here once rust-ccatoken is updated.
-    // This does not have any impact on end result, since all the current supported profiles by
-    // ccaguest and one specificed in draft-ydb-rats-cca-endorsements-04, produce same Evidence object.
+    if !(plat.profile() == PLATFORM_PROFILE || plat.profile() == PLATFORM_PROFILE_2024) {
+        return Err(Error::custom(format!(
+            "unsupported EAT platform profile {}",
+            plat.profile()
+        )));
+    }
 
     let mut ect = ElementEct::new()
         .cmtype(CmType::Evidence)
@@ -201,7 +204,7 @@ fn platform_to_ect<'a>(
             EnvironmentMapBuilder::default()
                 .class(
                     ClassMapBuilder::default()
-                        .class_id(ClassIdTypeChoice::Bytes(plat.impl_id.as_slice().into()))
+                        .class_id(ClassIdTypeChoice::Bytes(plat.impl_id().as_slice().into()))
                         .build()
                         .unwrap(),
                 )
@@ -209,25 +212,25 @@ fn platform_to_ect<'a>(
                 // "A-Corim-profile-for-cca-endorsements" rev-04 draft section 3.1.5.1
                 // https://www.ietf.org/archive/id/draft-ydb-rats-cca-endorsements-04.html#figure-15
                 .instance(InstanceIdTypeChoice::Ueid(TaggedUeidType::from(
-                    UeidType::try_from(plat.inst_id.as_slice())?,
+                    UeidType::try_from(plat.inst_id().as_slice())?,
                 )))
                 .build()
                 .unwrap(),
         )
         .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-            plat.profile.to_string(),
+            plat.profile().to_string(),
         ))));
 
     ect.add_authority(cpak_pub.clone());
 
-    let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg.as_str()).map_err(Error::custom)?;
+    let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg().as_str()).map_err(Error::custom)?;
 
     let cfg_element = ElementMap {
         mkey: Some("cca.platform-config".into()),
         mval: MeasurementValuesMapBuilder::default()
             .raw(RawValueType {
                 raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
-                    plat.config.clone(),
+                    plat.config().clone(),
                 ))),
                 raw_value_mask: None,
             })
@@ -247,7 +250,7 @@ fn platform_to_ect<'a>(
             .add_extension(
                 RAW_INT_LABEL.into(),
                 corim_rs::ExtensionValue::Int(
-                    match plat.lifecycle {
+                    match plat.lifecycle() {
                         0x0000..=0x00ff => Ok(LC_UNKNOWN),
                         0x1000..=0x10ff => Ok(LC_ASSEMBLY_AND_TEST),
                         0x2000..=0x20ff => Ok(LC_CCA_ROT_PROVISIONING),
@@ -266,7 +269,7 @@ fn platform_to_ect<'a>(
 
     ect.add_element(lifecycle_elt);
 
-    for sw_comp in plat.sw_components.iter() {
+    for sw_comp in plat.sw_components().iter() {
         let mut mval_builder = MeasurementValuesMapBuilder::default()
             .cryptokeys(vec![CryptoKeyTypeChoice::Bytes(
                 sw_comp.signer_id.clone().as_slice().into(),
@@ -307,11 +310,13 @@ fn platform_to_ect<'a>(
     Ok(Ect::from(ect))
 }
 
-fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
-    // TODO:
-    // Implement realm evidence profile check here once rust-ccatoken is updated.
-    // This does not have any impact on end result, since all the current supported profiles by
-    // ccaguest and one specificed in draft-ydb-rats-cca-endorsements-04, produce same Evidence object.
+fn realm_to_ect<'a>(realm: &RealmClaims) -> Result<Ect<'a>, Error> {
+    if !(realm.profile() == REALM_PROFILE || realm.profile() == REALM_PROFILE_2024) {
+        return Err(Error::custom(format!(
+            "unsupported EAT realm profile {}",
+            realm.profile()
+        )));
+    }
 
     let mut ect = ElementEct::new()
         .cmtype(CmType::Evidence)
@@ -320,7 +325,7 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
                 .class(
                     ClassMapBuilder::default()
                         .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
-                            realm.rim.clone(),
+                            realm.rim().clone(),
                         ))))
                         .build()
                         .unwrap(),
@@ -329,23 +334,28 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
                 .unwrap(),
         )
         .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-            realm.profile.to_string(),
+            realm.profile().to_string(),
         ))));
 
-    let hash_alg = HashAlgorithm::try_from(realm.hash_alg.as_str()).map_err(Error::custom)?;
+    let hash_alg = HashAlgorithm::try_from(realm.hash_alg().as_str()).map_err(Error::custom)?;
+
+    let authority: CryptoKeyTypeChoice =
+        ciborium::from_reader(realm.get_realm_key().map_err(Error::custom)?.as_slice())
+            .map_err(Error::custom)?;
+    ect.add_authority(authority);
 
     ect.add_element(ElementMap {
         mkey: Some("cca.rim".into()),
         mval: MeasurementValuesMapBuilder::default()
             .digest(vec![Digest {
                 alg: hash_alg.clone(),
-                val: realm.rim.clone().into(),
+                val: realm.rim().clone().into(),
             }])
             .build()
             .map_err(Error::custom)?,
     });
 
-    for (i, rem) in realm.rem.iter().enumerate() {
+    for (i, rem) in realm.rem().iter().enumerate() {
         ect.add_element(ElementMap {
             mkey: Some(Cow::<str>::Owned(format!("cca.rem{i}")).into()),
             mval: MeasurementValuesMapBuilder::default()
@@ -363,7 +373,7 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
         mval: MeasurementValuesMapBuilder::default()
             .raw(RawValueType {
                 raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
-                    realm.perso.clone().as_slice(),
+                    realm.perso(),
                 ))),
                 raw_value_mask: None,
             })
@@ -380,8 +390,8 @@ mod test {
 
     #[test]
     fn evidence_to_ect() {
-        let token = include_bytes!("../../../test/cca/cca-token-01.cbor");
-        let raw_key = include_str!("../../../test/cca/pkey.json");
+        let token = include_bytes!("../../../test/cca/cca-token-03.cbor");
+        let raw_key = include_str!("../../../test/cca/keys/iak-ec256.pub.json");
 
         let scheme = CcaScheme::new();
 

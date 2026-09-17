@@ -2,8 +2,6 @@ use log::warn;
 use std::vec::IntoIter;
 
 use crate::ect::ElementMap;
-
-use chrono::DateTime;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use corim_rs::{
@@ -23,37 +21,39 @@ pub fn is_rim_valid(rim_validity: Option<&ValidityMap>) -> bool {
         return true;
     };
 
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        warn!("System time is before UNIX epoch");
+        return false;
+    };
+
+    let now = now.as_secs();
+
+    let Some(not_after) = u64::try_from(validity.not_after.as_i128()).ok() else {
+        warn!("Invalid CoRIM 'not_after' timestamp");
+        return false;
+    };
 
     let not_before = validity
         .not_before
         .as_ref()
-        .map(|t| t.as_i128() as u64)
+        .and_then(|t| u64::try_from(t.as_i128()).ok())
         .unwrap_or(0);
-
-    let not_after = validity.not_after.as_i128() as u64;
 
     if not_before > not_after {
         warn!(
-            "Corim validity, Not before: {} is greater than Not After: {}",
-            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none"),
-            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
+            "CoRIM is invalid: 'not_before' ({}) is greater than 'not_after' ({})",
+            not_before, not_after
         );
         return false;
-    } else if now > not_after {
-        warn!(
-            "CoRIM expired on: {}",
-            DateTime::from_timestamp(not_after as i64, 0).expect("validity is never none")
-        );
+    }
+
+    if now > not_after {
+        warn!("CoRIM expired at timestamp: {}", not_after);
         return false;
-    } else if now < not_before {
-        warn!(
-            "CoRIM is not active till: {}",
-            DateTime::from_timestamp(not_before as i64, 0).expect("validity is never none")
-        );
+    }
+
+    if now < not_before {
+        warn!("CoRIM is not active until timestamp: {}", not_before);
         return false;
     }
 

@@ -20,7 +20,7 @@ path = "src/bin/main.rs"
 [dependencies]
 anyhow = "1.0.104"
 base64 = "0.23.1"
-ccatoken = { git = "https://github.com/veraison/rust-ccatoken", rev = "870c83f" }
+ccatoken = { git = "https://github.com/veraison/rust-ccatoken", branch = "feat/enum-claims-decoding" }
 ciborium = "0.2.2"
 clap = { version = "4.6.3", features = ["derive"] }
 clap-verbosity-flag = "3.0.4"
@@ -29,7 +29,7 @@ corim-rs = { version = "0.2.0", features = ["openssl"] }
 cose-rust = { version = "0.1.8", features = ["serde_json"] }
 ear = { git = "https://github.com/veraison/rust-ear", rev = "084529d" }
 env_logger = { version = "0.11.11", features = ["kv"] }
-jsonwebtoken = "10.3.0"
+jsonwebtoken = "11.1.0"
 log = { version = "0.4.33", features = ["kv", "std"] }
 regorus = "0.11.0"
 serde = { version = "1.0.229", features = ["derive"] }
