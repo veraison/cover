@@ -9,5 +9,9 @@
         "runtime-opaque": 2,
         "storage-opaque": 2,
         "sourced-data": 0
-    }
+    },
+    "ear_appraisal_policy_ids": [
+        "preamble",
+        "cca-platform"
+    ]
 }

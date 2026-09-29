@@ -233,7 +233,7 @@ impl<'a> KeyRelation<'a> {
     fn from_key_triple_record<T>(
         k: &T,
         profile: &Option<ProfileTypeChoice>,
-        verifier: &[CryptoKeyTypeChoice],
+        verifier_authority: &[CryptoKeyTypeChoice],
     ) -> Result<KeyRelation<'a>>
     where
         T: KeyTripleRecord<'a>,
@@ -267,7 +267,12 @@ impl<'a> KeyRelation<'a> {
         }
 
         // Adding "verifier's authority" as "addition KeyECT authority"
-        add_builder = add_builder.authority(verifier.iter().map(|v| v.to_fully_owned()).collect());
+        add_builder = add_builder.authority(
+            verifier_authority
+                .iter()
+                .map(|v| v.to_fully_owned())
+                .collect(),
+        );
 
         let condition = cond_builder.build()?;
         let addition = add_builder.build()?;
@@ -434,14 +439,14 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
     fn add<'b>(&mut self, corim: &Corim<'b>) -> Result<()> {
         // Get cryptographic key for signed corim,
         // for unsigned corims, use verifier's cryptographic key
-        let key: Vec<u8> = match corim.as_signed_ref() {
+        let corim_key: Vec<u8> = match corim.as_signed_ref() {
             Some(signed) => self.keystore.get(signed.kid.as_slice())?,
             None => self.keystore.get("verifier-key".as_bytes())?,
         };
 
         // Fetch verifier's key to use with Key addition Ect
         let verifier_key = self.keystore.get("verifier-key".as_bytes())?;
-        let mut parsed = parse_corim(corim, &key, &verifier_key).map_err(|e| {
+        let mut parsed = parse_corim(corim, &corim_key, &verifier_key).map_err(|e| {
             Error::Parse(
                 format!("CoRIM \"{}\"", corim.as_map_ref().id),
                 e.to_string(),
@@ -465,15 +470,15 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
 }
 
 /// Function to parse corims and add to corim-store.
-/// `key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
-/// In case of unsigned corim, `key` and `verifier_key` are same.
+/// `corim_key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
+/// In case of unsigned corim, `corim_key` and `verifier_key` are same.
 #[allow(clippy::needless_lifetimes)]
 pub fn parse_corim<'a, 'b>(
     corim: &Corim<'a>,
-    key: &[u8],
+    corim_key: &[u8],
     verifier_key: &[u8],
 ) -> Result<CorimParseResult<'b>> {
-    let corim_verifier = OpensslSigner::public_key_from_pem(key)?;
+    let corim_verifier = OpensslSigner::public_key_from_pem(corim_key)?;
     let authority = vec![CryptoKeyTypeChoice::CoseKey(
         corim_verifier.to_cose_key().into(),
     )];
@@ -521,11 +526,11 @@ mod test {
     #[test]
     fn rv_triple_record_creates_condition_and_addition_ects() {
         let corim_bytes = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
-        let key = include_bytes!("../../test/corim/key.pub.pem");
+        let corim_key = include_bytes!("../../test/corim/key.pub.pem");
         let parsed_corim = Corim::from_cbor(corim_bytes.as_slice()).unwrap();
         let corim_map = &parsed_corim.as_signed().unwrap().corim_map;
         let profile = corim_map.profile.clone();
-        let verifier = OpensslSigner::public_key_from_pem(key).unwrap();
+        let verifier = OpensslSigner::public_key_from_pem(corim_key).unwrap();
         let authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
 
         let env = EnvironmentMap::default();

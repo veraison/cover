@@ -43,8 +43,8 @@
               },
               [
                 {
-                  "type": "bytes",
-                  "value": "ewogICJrdHkiOiAiRUMiLAogICJjcnYiOiAiUC0yNTYiLAogICJ4IjogIk1LQkNUTkljS1VTRGlpMTF5U3MzNTI2aURaOEFpVG83VHU2S1BBcXY3RDQiLAogICJ5IjogIjRFdGw2U1JXMllpTFVyTjV2ZnZWSHVocDd4OFB4bHRtV1dsYmJNNElGeU0iCn0K"
+                  "type": "pkix-base64-key",
+                  "value": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFTUtCQ1ROSWNLVVNEaWkxMXlTczM1MjZpRFo4QQppVG83VHU2S1BBcXY3RDdnUzJYcEpGYlppSXRTczNtOSs5VWU2R252SHcvR1cyWlphVnRzemdnWEl3PT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg"
                 }
               ]
             ]

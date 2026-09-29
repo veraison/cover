@@ -1,4 +1,5 @@
 mod profile;
+use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 pub use profile::CcaCorimProfile;
 use std::borrow::Cow;
 
@@ -99,24 +100,35 @@ impl Scheme for CcaScheme {
     fn validate_and_parse_evidence<'a>(
         &self,
         evidence: &[u8],
-        trust_anchor: &CryptoKeyTypeChoice<'a>,
+        trust_anchors: &[CryptoKeyTypeChoice<'a>],
     ) -> Result<Vec<Ect<'a>>, Error> {
-        let key_bytes: Vec<u8> = match trust_anchor {
-            CryptoKeyTypeChoice::Bytes(bytes) => Ok(bytes.into()),
+        let [trust_anchor] = trust_anchors else {
+            return Err(Error::custom(format!(
+                "CCA supports exactly one trust anchor, found {}",
+                trust_anchors.len()
+            )));
+        };
+
+        let key: Cow<'_, str> = match trust_anchor {
+            // As per draft-ydb-rats-cca-endorsements-04, CPAK public key uses the tagged-pkix-base64-key-type
+            // variant of the $crypto-key-type-choice.
+            // Key is a SubjectPublicKeyInfo [RFC5280] using the encoding defined in Section 13 of [RFC7468].
             CryptoKeyTypeChoice::PkixBase64Key(b64key) => {
-                let pem_bytes = b64key.as_bytes();
-                let jwk_string = crate::util::pem_spki_to_jwk_string(pem_bytes)?;
-                Ok(jwk_string.into())
+                let key_bytes = STANDARD_NO_PAD
+                    .decode(b64key.as_bytes())
+                    .map_err(Error::custom)?;
+                Cow::Owned(crate::util::pem_spki_to_jwk_string(&key_bytes)?)
             }
-            _ => Err(Error::custom(format!(
-                "invalid trust anchor type: {:?}",
-                trust_anchor
-            ))),
-        }?;
-        let raw_key = std::str::from_utf8(&key_bytes).map_err(Error::custom)?;
+            _ => {
+                return Err(Error::custom(format!(
+                    "unsupported trust anchor type: {:?}; CCA requires PKIX base64",
+                    trust_anchor
+                )));
+            }
+        };
 
         let evidence = Evidence::decode(evidence).map_err(Error::custom)?;
-        let ta_store = create_store(&evidence, raw_key).map_err(Error::custom)?;
+        let ta_store = create_store(&evidence, key.as_ref())?;
 
         cca_to_ects(evidence, ta_store).map_err(Error::custom)
     }
@@ -391,14 +403,16 @@ mod test {
     #[test]
     fn evidence_to_ect() {
         let token = include_bytes!("../../../test/cca/cca-token-03.cbor");
-        let raw_key = include_str!("../../../test/cca/keys/iak-ec256.pub.json");
+        let pem_key = include_bytes!("../../../test/cca/keys/iak-ec256.pub.pem");
 
         let scheme = CcaScheme::new();
 
-        let key = CryptoKeyTypeChoice::Bytes(raw_key.as_bytes().into());
+        let key = CryptoKeyTypeChoice::PkixBase64Key(
+            Cow::<str>::Owned(STANDARD_NO_PAD.encode(pem_key)).into(),
+        );
 
         let ects = scheme
-            .validate_and_parse_evidence(token.as_slice(), &key)
+            .validate_and_parse_evidence(token.as_slice(), std::slice::from_ref(&key))
             .unwrap();
         assert_eq!(ects.len(), 2);
     }

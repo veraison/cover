@@ -1,8 +1,9 @@
 use std::fs;
 use std::io;
 
+use crate::result::Error;
 use anyhow::Result;
-use ear::Appraisal;
+use ear::{Appraisal, RawValue};
 use regorus::{Engine, Value};
 
 /// A [Policy] describes how inputs should be evaluated to generated an attestation result.
@@ -98,11 +99,13 @@ const PREAMBLE: &str = include_str!("preamble.rego");
 pub fn appraise(input: &str, policy: &Policy) -> Result<Appraisal> {
     let mut engine = Engine::new();
 
-    engine.add_policy("preamble".to_string(), PREAMBLE.to_string())?;
+    let policy_id = "preamble".to_string();
+    engine.add_policy(policy_id.clone(), PREAMBLE.to_string())?;
     engine.add_policy(policy.path.clone(), policy.text.clone())?;
     engine.set_input(Value::from_json_str(input)?);
 
     let mut appraisal = Appraisal::new();
+    appraisal.policy_ids = vec![policy_id, policy.id.clone()];
     appraisal.status = engine
         .eval_rule("data.policy.status".to_string())?
         .as_i8()?
@@ -147,9 +150,50 @@ pub fn appraise(input: &str, policy: &Policy) -> Result<Appraisal> {
             .eval_rule("data.policy.sourced_data".to_string())?
             .as_i8()?,
     );
+
     appraisal.update_status_from_trust_vector();
 
+    appraisal.verifier_claims =
+        match rego_to_ear(engine.eval_rule("data.policy.policy_claims".to_string())?) {
+            RawValue::Map(m) => m
+                .iter()
+                .map(|(x, y)| {
+                    if let RawValue::String(s) = x {
+                        Ok((s.to_owned(), y.to_owned()))
+                    } else {
+                        Err(Error::PolicyClaims(RawValue::Map(m.to_owned())))
+                    }
+                })
+                .collect(),
+            r => Err(Error::PolicyClaims(r)),
+        }?;
+
     Ok(appraisal)
+}
+
+fn rego_to_ear(val: Value) -> RawValue {
+    match val {
+        Value::Null => RawValue::Null,
+        Value::Undefined => RawValue::Null,
+        Value::Bool(v) => RawValue::Bool(v),
+        Value::Number(v) => {
+            if let Some(i) = v.as_i64() {
+                RawValue::Integer(i)
+            } else if let Some(f) = v.as_f64() {
+                RawValue::Float(f)
+            } else {
+                RawValue::Null
+            }
+        }
+        Value::String(v) => RawValue::String(v.to_string()),
+        Value::Array(v) => RawValue::Array(v.iter().map(|x| rego_to_ear(x.to_owned())).collect()),
+        Value::Set(v) => RawValue::Array(v.iter().map(|x| rego_to_ear(x.to_owned())).collect()),
+        Value::Object(v) => RawValue::Map(
+            v.iter()
+                .map(|(x, y)| (rego_to_ear(x.to_owned()), rego_to_ear(y.to_owned())))
+                .collect(),
+        ),
+    }
 }
 
 #[cfg(test)]

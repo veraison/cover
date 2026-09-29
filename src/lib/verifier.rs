@@ -74,9 +74,9 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
         let ta_id = scheme.get_trust_anchor_id(evidence)?;
 
-        let trust_anchor = self.get_trust_anchor(&ta_id)?;
+        let trust_anchors = self.get_trust_anchors(&ta_id)?;
 
-        let mut evidence_ects = scheme.validate_and_parse_evidence(evidence, &trust_anchor)?;
+        let mut evidence_ects = scheme.validate_and_parse_evidence(evidence, &trust_anchors)?;
 
         let mut acs = Vec::new();
         acs.append(&mut evidence_ects);
@@ -121,22 +121,22 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
 
     /// Add a CoRIM to the verifier's store.
     pub fn add_corim(&mut self, corim: &ConciseRimTypeChoice<'a>) -> Result<()> {
-        self.corims.add(corim)
+        let supported = self
+            .schemes
+            .values()
+            .any(|scheme| scheme.as_ref().supports_corim(corim));
+
+        if supported {
+            self.corims.add(corim)
+        } else {
+            Err(Error::Custom("unsupported CoRIM input".to_string()))
+        }
     }
 
     /// Add CBOR-encoded CoRIM bytes to the verifier's store.
     pub fn add_corim_bytes(&mut self, corim: &'a [u8]) -> Result<()> {
         let corim = ConciseRimTypeChoice::from_cbor(corim)?;
-        let supported = self
-            .schemes
-            .values()
-            .any(|scheme| scheme.as_ref().supports_corim(&corim));
-
-        if supported {
-            self.corims.add(&corim)
-        } else {
-            Ok(())
-        }
+        self.add_corim(&corim)
     }
 
     /// Add an attestation [Scheme] to the verifier.
@@ -207,22 +207,16 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
         self.schemes.get(name).map(|s| s.as_ref())
     }
 
-    fn get_trust_anchor(&self, id: &EnvironmentMap<'a>) -> Result<CryptoKeyTypeChoice<'a>> {
-        let mut found: Option<CryptoKeyTypeChoice> = None;
-
+    fn get_trust_anchors(&self, id: &EnvironmentMap<'a>) -> Result<Vec<CryptoKeyTypeChoice<'a>>> {
         for kv in self.corims.iter_key() {
             let cond = kv.condition;
             if cond.get_environment().as_ref().unwrap().matches(id)
-                && let Some(elts) = &cond.key_list
+                && let Some(elts) = cond.key_list
             {
-                found = elts.first().cloned();
+                return Ok(elts);
             }
         }
-
-        match found {
-            Some(key) => Ok(key),
-            None => Err(Error::custom(format!("no trust anchor found for {:?}", id))),
-        }
+        Err(Error::custom(format!("no trust anchor found for {:?}", id)))
     }
 }
 

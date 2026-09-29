@@ -56,17 +56,20 @@ fn jwk_algorithm_to_cose(alg: jwk::KeyAlgorithm) -> Result<CoseAlgorithm, Error>
         jwk::KeyAlgorithm::UNKNOWN_ALGORITHM => {
             Err(Error::Custom(format!("Unknowm algorithm {}", alg)))
         }
-        _ => todo!(),
+        _ => Err(Error::Custom(format!("unsupported algorithm {}", alg))),
     }
 }
 
-fn jwk_ec_curve_to_cose(curve: &jwk::EllipticCurve) -> CoseEllipticCurve {
+fn jwk_ec_curve_to_cose(curve: &jwk::EllipticCurve) -> Result<CoseEllipticCurve, Error> {
     match curve {
-        jwk::EllipticCurve::P256 => CoseEllipticCurve::P256,
-        jwk::EllipticCurve::P384 => CoseEllipticCurve::P384,
-        jwk::EllipticCurve::P521 => CoseEllipticCurve::P521,
-        jwk::EllipticCurve::Ed25519 => CoseEllipticCurve::Ed25519,
-        _ => todo!(),
+        jwk::EllipticCurve::P256 => Ok(CoseEllipticCurve::P256),
+        jwk::EllipticCurve::P384 => Ok(CoseEllipticCurve::P384),
+        jwk::EllipticCurve::P521 => Ok(CoseEllipticCurve::P521),
+        jwk::EllipticCurve::Ed25519 => Ok(CoseEllipticCurve::Ed25519),
+        _ => Err(Error::Custom(format!(
+            "unsupported algorithm curve {:?}",
+            curve
+        ))),
     }
 }
 
@@ -118,7 +121,7 @@ pub fn jwk_to_crypto_key(jwk: jwk::Jwk) -> Result<CryptoKeyTypeChoice<'static>, 
     match &jwk.algorithm {
         jwk::AlgorithmParameters::EllipticCurve(ec_params) => {
             cose_key.kty = CoseKty::Ec2;
-            cose_key.crv = Some(jwk_ec_curve_to_cose(&ec_params.curve));
+            cose_key.crv = Some(jwk_ec_curve_to_cose(&ec_params.curve)?);
             cose_key.x = Some(Bytes::from(
                 URL_SAFE_NO_PAD
                     .decode(&ec_params.x)
@@ -132,7 +135,7 @@ pub fn jwk_to_crypto_key(jwk: jwk::Jwk) -> Result<CryptoKeyTypeChoice<'static>, 
         }
         jwk::AlgorithmParameters::OctetKeyPair(okp_params) => {
             cose_key.kty = CoseKty::Okp;
-            cose_key.crv = Some(jwk_ec_curve_to_cose(&okp_params.curve));
+            cose_key.crv = Some(jwk_ec_curve_to_cose(&okp_params.curve)?);
             cose_key.x = Some(Bytes::from(
                 URL_SAFE_NO_PAD
                     .decode(&okp_params.x)

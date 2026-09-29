@@ -79,7 +79,7 @@
 //! let verifier = Verifier::new(store, schemes);
 //!
 //! // load evidence
-//! let evidence = fs::read("test/cca/cca-token-01.cbor").unwrap();
+//! let evidence = fs::read("test/cca/cca-token-03.cbor").unwrap();
 //!
 //! // appraise evidence and produce the attestation result
 //! let result = verifier.verify("cca", evidence.as_slice(), None).unwrap();
@@ -99,8 +99,8 @@
 //! target/debug/cover-cli --corim-dir test/corim/ \
 //!     --key test/corim/key.pub.pem \
 //!     --verifier-key test/corim/key.pub.pem \
-//!     --pretty test/cca/cca-token-01.cbor \
-//!     --nonce adfadaewafewr32r --output cca-token-01.ear.json
+//!     --pretty test/cca/cca-token-03.cbor \
+//!     --nonce adfadaewafewr32r --output cca-token-03.ear.json
 //! ```
 //!
 //! Use `-h` to see the full list of command line arguments.
