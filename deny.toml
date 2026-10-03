@@ -11,7 +11,6 @@
 # report unmaintained crates only if they are direct dependencies
 unmaintained = "workspace"
 ignore = [
-    { id = "RUSTSEC-2026-0009", reason = "time < 0.3.47, only affected when formatting with Rfc2822" }
 ]
 
 [licenses]
