@@ -1,5 +1,9 @@
 {
   "id": "test ta corim id",
+  "profile": {
+    "type": "uri",
+    "value": "tag:arm.com,2025:endorsements/cca_platform#1.0.0"
+  },
   "tags": [
     {
       "type": "comid",
@@ -39,8 +43,8 @@
               },
               [
                 {
-                  "type": "bytes",
-                  "value": "ewogICJjcnYiOiAiUC0zODQiLAogICJrdHkiOiAiRUMiLAogICJ4IjogIklTaG54UzRybFFpd3BDQ3BCV0R6bE5MZnFpRzkxMUZQOGFrQnItZmg5NHV4SFU1bS1LaWppdnAycjJveHhONk0iLAogICJ5IjogImhNNHRyOG1XUWxpMVA2MXhoM1QwVmlEUkViRjI2REdPRVlmYkFqV2pHTk43cFpmLTZBNE9USFlxRXJ5ejZtN1UiCn0K"
+                  "type": "pkix-base64-key",
+                  "value": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFTUtCQ1ROSWNLVVNEaWkxMXlTczM1MjZpRFo4QQppVG83VHU2S1BBcXY3RDdnUzJYcEpGYlppSXRTczNtOSs5VWU2R252SHcvR1cyWlphVnRzemdnWEl3PT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg"
                 }
               ]
             ]

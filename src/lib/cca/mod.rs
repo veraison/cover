@@ -1,14 +1,18 @@
+mod profile;
+use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
+pub use profile::CcaCorimProfile;
 use std::borrow::Cow;
 
 use ccatoken::{
     store::{Cpak, ITrustAnchorStore, MemoTrustAnchorStore},
-    token::{Evidence, Platform, Realm},
+    token::{Evidence, PlatformClaims, RealmClaims},
+    token::{PLATFORM_PROFILE, PLATFORM_PROFILE_2024, REALM_PROFILE, REALM_PROFILE_2024},
 };
 use corim_rs::{
     CryptoKeyTypeChoice, EnvironmentMap,
     core::{
-        Bytes, Digest, ExtensionValue, HashAlgorithm, RawValueType, RawValueTypeChoice,
-        TaggedBytes, TaggedUeidType, Text, UeidType, Uri,
+        Bytes, Digest, HashAlgorithm, RawValueType, RawValueTypeChoice, TaggedBytes,
+        TaggedUeidType, Text, UeidType, Uri,
     },
     corim::ProfileTypeChoice,
     triples::{
@@ -19,7 +23,7 @@ use corim_rs::{
 use ear::claim::TRUSTWORTHY_INSTANCE;
 
 use crate::authority::jwk_to_crypto_key;
-use crate::ect::{CmType, Ect, ElementMap};
+use crate::ect::{CmType, Ect, ElementEct, ElementMap};
 use crate::policy::Policy;
 use crate::result::Error;
 use crate::scheme::Scheme;
@@ -48,6 +52,7 @@ pub const LC_DECOMMISSIONED: i64 = 6;
 /// Architecture](https://www.arm.com/architecture/security-features/arm-confidential-compute-architecture)
 /// attestation scheme. Evidence is composed of plaform and realm components, each evaluated
 /// according to its own policy.
+
 #[derive(Debug, Default)]
 pub struct CcaScheme;
 
@@ -66,6 +71,10 @@ impl Scheme for CcaScheme {
         "arm-cca".to_string()
     }
 
+    fn get_supported_corim_profiles(&self) -> Vec<String> {
+        CcaCorimProfile::all()
+    }
+
     fn match_evidence(&self, evidence: &[u8]) -> bool {
         Evidence::decode(evidence).is_ok()
     }
@@ -76,13 +85,13 @@ impl Scheme for CcaScheme {
             .class(
                 ClassMapBuilder::default()
                     .class_id(ClassIdTypeChoice::Bytes(
-                        evidence.platform_claims.impl_id.as_slice().into(),
+                        evidence.platform_claims.impl_id().as_slice().into(),
                     ))
                     .build()
                     .unwrap(),
             )
             .instance(InstanceIdTypeChoice::Ueid(TaggedUeidType::from(
-                UeidType::try_from(evidence.platform_claims.inst_id.as_slice())?,
+                UeidType::try_from(evidence.platform_claims.inst_id().as_slice())?,
             )))
             .build()
             .map_err(Error::custom)
@@ -91,24 +100,35 @@ impl Scheme for CcaScheme {
     fn validate_and_parse_evidence<'a>(
         &self,
         evidence: &[u8],
-        trust_anchor: &CryptoKeyTypeChoice<'a>,
+        trust_anchors: &[CryptoKeyTypeChoice<'a>],
     ) -> Result<Vec<Ect<'a>>, Error> {
-        let key_bytes: Vec<u8> = match trust_anchor {
-            CryptoKeyTypeChoice::Bytes(bytes) => Ok(bytes.into()),
+        let [trust_anchor] = trust_anchors else {
+            return Err(Error::custom(format!(
+                "CCA supports exactly one trust anchor, found {}",
+                trust_anchors.len()
+            )));
+        };
+
+        let key: Cow<'_, str> = match trust_anchor {
+            // As per draft-ydb-rats-cca-endorsements-04, CPAK public key uses the tagged-pkix-base64-key-type
+            // variant of the $crypto-key-type-choice.
+            // Key is a SubjectPublicKeyInfo [RFC5280] using the encoding defined in Section 13 of [RFC7468].
             CryptoKeyTypeChoice::PkixBase64Key(b64key) => {
-                let pem_bytes = b64key.as_bytes();
-                let jwk_string = crate::util::pem_spki_to_jwk_string(pem_bytes)?;
-                Ok(jwk_string.into())
+                let key_bytes = STANDARD_NO_PAD
+                    .decode(b64key.as_bytes())
+                    .map_err(Error::custom)?;
+                Cow::Owned(crate::util::pem_spki_to_jwk_string(&key_bytes)?)
             }
-            _ => Err(Error::custom(format!(
-                "invalid trust anchor type: {:?}",
-                trust_anchor
-            ))),
-        }?;
-        let raw_key = std::str::from_utf8(&key_bytes).map_err(Error::custom)?;
+            _ => {
+                return Err(Error::custom(format!(
+                    "unsupported trust anchor type: {:?}; CCA requires PKIX base64",
+                    trust_anchor
+                )));
+            }
+        };
 
         let evidence = Evidence::decode(evidence).map_err(Error::custom)?;
-        let ta_store = create_store(&evidence, raw_key).map_err(Error::custom)?;
+        let ta_store = create_store(&evidence, key.as_ref())?;
 
         cca_to_ects(evidence, ta_store).map_err(Error::custom)
     }
@@ -139,8 +159,8 @@ fn create_store(evidence: &Evidence, key: &str) -> Result<MemoTrustAnchorStore, 
     let store_contents = vec![Cpak {
         raw_pkey: raw_key,
         pkey: None,
-        impl_id: evidence.platform_claims.impl_id,
-        inst_id: evidence.platform_claims.inst_id,
+        impl_id: *evidence.platform_claims.impl_id(),
+        inst_id: *evidence.platform_claims.inst_id(),
     }];
 
     let json = serde_json::to_string(&store_contents).map_err(Error::custom)?;
@@ -164,8 +184,8 @@ fn cca_to_ects<'a, S: ITrustAnchorStore>(
         return Err(Error::SignatureValidation);
     }
 
-    let inst_id = evidence.platform_claims.inst_id;
-    let authority = match ta_store.lookup(&inst_id) {
+    let inst_id = evidence.platform_claims.inst_id();
+    let authority = match ta_store.lookup(inst_id) {
         None => Err(Error::custom("could not find CPAK")),
         Some(cpak) => match cpak.pkey {
             Some(key) => jwk_to_crypto_key(key),
@@ -173,42 +193,56 @@ fn cca_to_ects<'a, S: ITrustAnchorStore>(
         },
     }?;
 
-    let mut plat_ect = platform_to_ect(&evidence.platform_claims)?;
-    plat_ect.add_authority(authority.clone());
-
-    let mut realm_ect = realm_to_ect(&evidence.realm_claims)?;
-    realm_ect.add_authority(authority);
-
-    Ok(vec![plat_ect, realm_ect])
+    Ok(vec![
+        platform_to_ect(&evidence.platform_claims, &authority)?,
+        realm_to_ect(&evidence.realm_claims)?,
+    ])
 }
 
-fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
-    let mut ect = Ect::new(CmType::Evidence);
+fn platform_to_ect<'a>(
+    plat: &PlatformClaims,
+    cpak_pub: &CryptoKeyTypeChoice<'a>,
+) -> Result<Ect<'a>, Error> {
+    if !(plat.profile() == PLATFORM_PROFILE || plat.profile() == PLATFORM_PROFILE_2024) {
+        return Err(Error::custom(format!(
+            "unsupported EAT platform profile {}",
+            plat.profile()
+        )));
+    }
 
-    ect.set_environment(
-        EnvironmentMapBuilder::default()
-            .class(
-                ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Bytes(plat.impl_id.as_slice().into()))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap(),
-    );
+    let mut ect = ElementEct::new()
+        .cmtype(CmType::Evidence)
+        .environment(
+            EnvironmentMapBuilder::default()
+                .class(
+                    ClassMapBuilder::default()
+                        .class_id(ClassIdTypeChoice::Bytes(plat.impl_id().as_slice().into()))
+                        .build()
+                        .unwrap(),
+                )
+                // Adding instance id as per transformation function given in
+                // "A-Corim-profile-for-cca-endorsements" rev-04 draft section 3.1.5.1
+                // https://www.ietf.org/archive/id/draft-ydb-rats-cca-endorsements-04.html#figure-15
+                .instance(InstanceIdTypeChoice::Ueid(TaggedUeidType::from(
+                    UeidType::try_from(plat.inst_id().as_slice())?,
+                )))
+                .build()
+                .unwrap(),
+        )
+        .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
+            plat.profile().to_string(),
+        ))));
 
-    ect.set_profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-        plat.profile.to_string(),
-    ))));
+    ect.add_authority(cpak_pub.clone());
 
-    let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg.as_str()).map_err(Error::custom)?;
+    let plat_hash_alg = HashAlgorithm::try_from(plat.hash_alg().as_str()).map_err(Error::custom)?;
 
     let cfg_element = ElementMap {
         mkey: Some("cca.platform-config".into()),
         mval: MeasurementValuesMapBuilder::default()
             .raw(RawValueType {
                 raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
-                    plat.config.clone(),
+                    plat.config().clone(),
                 ))),
                 raw_value_mask: None,
             })
@@ -218,6 +252,8 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
 
     ect.add_element(cfg_element);
 
+    // Transformation of platform lifecycle claim is not provided in draft-ydp-rats-cca-endorsements-04
+    // However, a lifecyle element-map is created so that it can be checked during the policy evaluation.
     let lifecycle_elt = ElementMap {
         mkey: Some(corim_rs::triples::MeasuredElementTypeChoice::Tstr(
             "lifecycle".into(),
@@ -225,8 +261,8 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
         mval: MeasurementValuesMapBuilder::default()
             .add_extension(
                 RAW_INT_LABEL.into(),
-                ExtensionValue::Int(
-                    match plat.lifecycle {
+                corim_rs::ExtensionValue::Int(
+                    match plat.lifecycle() {
                         0x0000..=0x00ff => Ok(LC_UNKNOWN),
                         0x1000..=0x10ff => Ok(LC_ASSEMBLY_AND_TEST),
                         0x2000..=0x20ff => Ok(LC_CCA_ROT_PROVISIONING),
@@ -245,7 +281,7 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
 
     ect.add_element(lifecycle_elt);
 
-    for sw_comp in plat.sw_components.iter() {
+    for sw_comp in plat.sw_components().iter() {
         let mut mval_builder = MeasurementValuesMapBuilder::default()
             .cryptokeys(vec![CryptoKeyTypeChoice::Bytes(
                 sw_comp.signer_id.clone().as_slice().into(),
@@ -277,46 +313,61 @@ fn platform_to_ect<'a>(plat: &Platform) -> Result<Ect<'a>, Error> {
         };
 
         ect.add_element(element);
+
+        // TODO:
+        // Add code to parse "Platform TBB ROTPK" and "Platform manufacturing config"
+        // once they are supported in veraison/rust-ccatoken
     }
 
-    Ok(ect)
+    Ok(Ect::from(ect))
 }
 
-fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
-    let mut ect = Ect::new(CmType::Evidence);
+fn realm_to_ect<'a>(realm: &RealmClaims) -> Result<Ect<'a>, Error> {
+    if !(realm.profile() == REALM_PROFILE || realm.profile() == REALM_PROFILE_2024) {
+        return Err(Error::custom(format!(
+            "unsupported EAT realm profile {}",
+            realm.profile()
+        )));
+    }
 
-    ect.set_environment(
-        EnvironmentMapBuilder::default()
-            .class(
-                ClassMapBuilder::default()
-                    .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
-                        realm.rim.clone(),
-                    ))))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap(),
-    );
+    let mut ect = ElementEct::new()
+        .cmtype(CmType::Evidence)
+        .environment(
+            EnvironmentMapBuilder::default()
+                .class(
+                    ClassMapBuilder::default()
+                        .class_id(ClassIdTypeChoice::Bytes(TaggedBytes::from(Bytes::from(
+                            realm.rim().clone(),
+                        ))))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap(),
+        )
+        .profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
+            realm.profile().to_string(),
+        ))));
 
-    ect.set_profile(ProfileTypeChoice::Uri(Uri::from(Text::from(
-        realm.profile.to_string(),
-    ))));
+    let hash_alg = HashAlgorithm::try_from(realm.hash_alg().as_str()).map_err(Error::custom)?;
 
-    let hash_alg = HashAlgorithm::try_from(realm.hash_alg.as_str()).map_err(Error::custom)?;
+    let authority: CryptoKeyTypeChoice =
+        ciborium::from_reader(realm.get_realm_key().map_err(Error::custom)?.as_slice())
+            .map_err(Error::custom)?;
+    ect.add_authority(authority);
 
     ect.add_element(ElementMap {
         mkey: Some("cca.rim".into()),
         mval: MeasurementValuesMapBuilder::default()
             .digest(vec![Digest {
                 alg: hash_alg.clone(),
-                val: realm.rim.clone().into(),
+                val: realm.rim().clone().into(),
             }])
             .build()
             .map_err(Error::custom)?,
     });
 
-    for (i, rem) in realm.rem.iter().enumerate() {
+    for (i, rem) in realm.rem().iter().enumerate() {
         ect.add_element(ElementMap {
             mkey: Some(Cow::<str>::Owned(format!("cca.rem{i}")).into()),
             mval: MeasurementValuesMapBuilder::default()
@@ -334,7 +385,7 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
         mval: MeasurementValuesMapBuilder::default()
             .raw(RawValueType {
                 raw_value: RawValueTypeChoice::TaggedBytes(TaggedBytes::from(Bytes::from(
-                    realm.perso.clone().as_slice(),
+                    realm.perso(),
                 ))),
                 raw_value_mask: None,
             })
@@ -342,7 +393,7 @@ fn realm_to_ect<'a>(realm: &Realm) -> Result<Ect<'a>, Error> {
             .map_err(Error::custom)?,
     });
 
-    Ok(ect)
+    Ok(Ect::from(ect))
 }
 
 #[cfg(test)]
@@ -351,15 +402,17 @@ mod test {
 
     #[test]
     fn evidence_to_ect() {
-        let token = include_bytes!("../../../test/cca/cca-token-01.cbor");
-        let raw_key = include_str!("../../../test/cca/pkey.json");
+        let token = include_bytes!("../../../test/cca/cca-token-03.cbor");
+        let pem_key = include_bytes!("../../../test/cca/keys/iak-ec256.pub.pem");
 
         let scheme = CcaScheme::new();
 
-        let key = CryptoKeyTypeChoice::Bytes(raw_key.as_bytes().into());
+        let key = CryptoKeyTypeChoice::PkixBase64Key(
+            Cow::<str>::Owned(STANDARD_NO_PAD.encode(pem_key)).into(),
+        );
 
         let ects = scheme
-            .validate_and_parse_evidence(token.as_slice(), &key)
+            .validate_and_parse_evidence(token.as_slice(), std::slice::from_ref(&key))
             .unwrap();
         assert_eq!(ects.len(), 2);
     }

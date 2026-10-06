@@ -1,11 +1,10 @@
 use std::fs;
 use std::io;
 
+use crate::result::Error;
 use anyhow::Result;
 use ear::{Appraisal, RawValue};
 use regorus::{Engine, Value};
-
-use crate::result::Error;
 
 /// A [Policy] describes how inputs should be evaluated to generated an attestation result.
 /// Policy rules are writen using [Rego policy
@@ -49,12 +48,12 @@ use crate::result::Error;
 ///
 /// refvals contains ect if {
 ///   ect = platform[_]
-///   ect["cm-type"] == "reference-values"
+///   ect["cmtype"] == "reference-values"
 /// }
 ///
 /// evidence contains ect if {
 ///   ect = platform[_]
-///   ect["cm-type"] == "evidence"
+///   ect["cmtype"] == "evidence"
 /// }
 ///
 /// # NOTE: APPROVED_CONFIG and UNSAFE_CONFIG are defined in the preamble
@@ -100,11 +99,13 @@ const PREAMBLE: &str = include_str!("preamble.rego");
 pub fn appraise(input: &str, policy: &Policy) -> Result<Appraisal> {
     let mut engine = Engine::new();
 
-    engine.add_policy("preamble".to_string(), PREAMBLE.to_string())?;
+    let policy_id = "preamble".to_string();
+    engine.add_policy(policy_id.clone(), PREAMBLE.to_string())?;
     engine.add_policy(policy.path.clone(), policy.text.clone())?;
     engine.set_input(Value::from_json_str(input)?);
 
     let mut appraisal = Appraisal::new();
+    appraisal.policy_ids = vec![policy_id, policy.id.clone()];
     appraisal.status = engine
         .eval_rule("data.policy.status".to_string())?
         .as_i8()?
@@ -149,9 +150,10 @@ pub fn appraise(input: &str, policy: &Policy) -> Result<Appraisal> {
             .eval_rule("data.policy.sourced_data".to_string())?
             .as_i8()?,
     );
+
     appraisal.update_status_from_trust_vector();
 
-    appraisal.policy_claims =
+    appraisal.verifier_claims =
         match rego_to_ear(engine.eval_rule("data.policy.policy_claims".to_string())?) {
             RawValue::Map(m) => m
                 .iter()
@@ -196,7 +198,6 @@ fn rego_to_ear(val: Value) -> RawValue {
 
 #[cfg(test)]
 mod test {
-    use std::fs;
     use std::path::Path;
 
     use ear::Appraisal;

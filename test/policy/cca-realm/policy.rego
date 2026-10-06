@@ -7,12 +7,12 @@ realm contains ect if {
 
 refvals contains ect if {
   ect = realm[_]
-  ect["cm-type"] == "reference-values"
+  ect["cmtype"] == "reference-values"
 }
 
 evidence contains ect if {
   ect = realm[_]
-  ect["cm-type"] == "evidence"
+  ect["cmtype"] == "evidence"
 }
 
 # If cryptographic verification completes (implicit in getting here), instance
