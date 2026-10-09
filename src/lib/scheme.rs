@@ -13,8 +13,8 @@ pub trait Scheme {
     /// The name of the scheme. Used specify the scheme to the verifier.
     fn name(&self) -> String;
 
-    /// Profile that will be set in the attestation result when this scheme is used.
-    fn profile(&self) -> String;
+    /// Mediatype that will be set in the attestation result when this scheme is used.
+    fn evidence_mediatype(&self) -> String;
 
     /// Return supported Corim profiles for endorsements.
     fn get_supported_corim_profiles(&self) -> Vec<String>;

@@ -67,8 +67,8 @@ impl Scheme for CcaScheme {
         "cca".to_string()
     }
 
-    fn profile(&self) -> String {
-        "arm-cca".to_string()
+    fn evidence_mediatype(&self) -> String {
+        "application/cmw+cbor".to_string()
     }
 
     fn get_supported_corim_profiles(&self) -> Vec<String> {

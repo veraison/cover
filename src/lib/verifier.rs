@@ -1,11 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use base64::{self, Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use cmw::{CMW, Indicator, Mime, Monad};
+use cmw::{CMW, Indicator, Monad};
 use corim_rs::{ConciseRimTypeChoice, CryptoKeyTypeChoice, EnvironmentMap};
 use ear::{Appraisal, EAR_PROFILE, Ear, VerifierID};
 use log::warn;
@@ -73,6 +72,8 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
             .get_scheme(scheme_name)
             .ok_or(Error::scheme_not_found(scheme_name))?;
 
+        let evidence_mediatype = scheme.evidence_mediatype();
+
         let ta_id = scheme.get_trust_anchor_id(evidence)?;
 
         let trust_anchors = self.get_trust_anchors(&ta_id)?;
@@ -105,7 +106,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
             developer: "https://veraison-project.org".to_string(),
         };
         ear.raw_evidence = Some(CMW::Monad(Monad::new_media_type(
-            Mime::from_str("application/eat+cwt").unwrap(),
+            evidence_mediatype.parse().unwrap(),
             evidence.to_vec(),
             Some(Indicator::EVIDENCE),
         )?));
@@ -209,7 +210,7 @@ impl<'a, S: CorimStore<'a>> Verifier<'a, S> {
     }
 
     fn get_trust_anchors(&self, id: &EnvironmentMap<'a>) -> Result<Vec<CryptoKeyTypeChoice<'a>>> {
-        for kv in self.corims.iter_key() {
+        for kv in self.corims.iter_keys() {
             let cond = kv.condition;
             if cond.get_environment().as_ref().unwrap().matches(id)
                 && let Some(elts) = cond.key_list
@@ -291,9 +292,8 @@ mod test {
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
-        keystore.add("verifier-key".as_bytes(), key).unwrap();
 
-        let mut store = MemCorimStore::new(keystore);
+        let mut store = MemCorimStore::new(keystore, key.to_vec());
         store.add_bytes(corim_rv_plat.as_slice()).unwrap();
         store.add_bytes(corim_rv_realm.as_slice()).unwrap();
         store.add_bytes(corim_ta.as_slice()).unwrap();
@@ -317,7 +317,7 @@ mod test {
         let key = include_bytes!("../../test/corim/key.pub.pem");
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
-        let store = MemCorimStore::new(keystore);
+        let store = MemCorimStore::new(keystore, key.to_vec());
         let mut schemes = HashMap::new();
         let cca_scheme: Box<dyn Scheme> = Box::new(CcaScheme::new());
         schemes.insert("arm-cca".to_string(), cca_scheme);
@@ -335,7 +335,7 @@ mod test {
         let key = include_bytes!("../../test/corim/key.pub.pem");
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
-        let store = MemCorimStore::new(keystore);
+        let store = MemCorimStore::new(keystore, key.to_vec());
         let mut schemes = HashMap::new();
         let cca_scheme: Box<dyn Scheme> = Box::new(CcaScheme::new());
         schemes.insert("arm-cca".to_string(), cca_scheme);
