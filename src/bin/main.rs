@@ -130,11 +130,8 @@ fn verify(args: &Cli) -> Result<()> {
 
     debug!("reading user/verfier key from \"{}\"", args.verifier_key);
     let (_, verifier_key) = read_key(&args.verifier_key)?;
-    // to make kid of verifier's pub key known beforehand, hard-coded kid is used below,
-    // so that verifier key can be retreived later
-    key_store.add("verifier-key".as_bytes(), &verifier_key)?;
 
-    let mut corim_store = MemCorimStore::new(key_store);
+    let mut corim_store = MemCorimStore::new(key_store, verifier_key);
 
     let mut corim_loaded = false;
 

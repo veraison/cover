@@ -28,6 +28,9 @@
 //!   policy results in an appraisal containing an AR4SI\[[3]\] trust vector.
 //! - The appraisals are added to an attestation result in EAR\[[2]\] format.
 //!
+//! >NOTE: Since, CoVER currently only support ARM CCA scheme, implementation do not parse identity
+//! >triples since it is not used in ARM CCA. It can be extended as more schemes are added into it.
+//!
 //! [1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-11.html#name-reference-verifier
 //! [2]: https://www.ietf.org/archive/id/draft-ietf-rats-ear-04.html
 //! [3]: https://www.ietf.org/archive/id/draft-ietf-rats-ar4si-10.html
@@ -58,10 +61,11 @@
 //! let mut keystore = MemKeyStore::new();
 //! let key = fs::read("test/corim/key.pub.pem").unwrap();
 //! keystore.add("key.pub.pem".as_bytes(), &key).unwrap();
-//! keystore.add("verifier-key".as_bytes(), &key).unwrap();
 //!
 //! // load CoRIMs
-//! let mut store = MemCorimStore::new(keystore);
+//!
+//! // Here example uses same key as verifier_authority but in real this can be a different key
+//! let mut store = MemCorimStore::new(keystore, key);
 //! for path in [
 //!     "test/corim/signed-corim-cca-plat-rv.cbor",
 //!     "test/corim/signed-corim-cca-realm-rv.cbor",

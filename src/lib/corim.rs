@@ -281,7 +281,7 @@ impl<'a> KeyRelation<'a> {
         })
     }
 
-    pub fn from_identity_key_triple_record<'b>(
+    pub fn from_identity_triple_record<'b>(
         ikt: &IdentityTripleRecord<'b>,
         profile: &Option<ProfileTypeChoice<'b>>,
         authority: &[CryptoKeyTypeChoice<'b>],
@@ -323,7 +323,7 @@ pub trait CorimStore<'a> {
     fn iter_ev(&self) -> Self::EvIter;
 
     /// Iterate over extracted [KeyRelation]s.
-    fn iter_key(&self) -> Self::KeyIter;
+    fn iter_keys(&self) -> Self::KeyIter;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -418,16 +418,21 @@ impl std::fmt::Debug for CorimParseResult<'_> {
 }
 
 /// In-memory implementation of [CorimStore].
+// Field 'verifier_authority' is mandatory because after successfull verification of Keys in
+// key-list of Identity/Attest-key triples, claims are asserted with the joint authority
+// of the Endorser (CoRIM signer) and the Verifier
 pub struct MemCorimStore<'a, S: KeyStore> {
     pub items: CorimParseResult<'a>,
     pub keystore: S,
+    pub verifier_authority: Vec<u8>,
 }
 
 impl<S: KeyStore> MemCorimStore<'_, S> {
-    pub fn new(keystore: S) -> Self {
+    pub fn new(keystore: S, verifier_authority: Vec<u8>) -> Self {
         Self {
             items: CorimParseResult::new(),
             keystore,
+            verifier_authority,
         }
     }
 }
@@ -441,19 +446,19 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
     fn add<'b>(&mut self, corim: &Corim<'b>) -> Result<()> {
         // Get cryptographic key for signed corim,
         // for unsigned corims, use verifier's cryptographic key
-        let corim_key: Vec<u8> = match corim.as_signed_ref() {
-            Some(signed) => self.keystore.get(signed.kid.as_slice())?,
-            None => self.keystore.get("verifier-key".as_bytes())?,
+        let corim_key: Option<Vec<u8>> = match corim.as_signed_ref() {
+            Some(signed) => Some(self.keystore.get(signed.kid.as_slice())?),
+            None => None,
         };
 
         // Fetch verifier's key to use with Key addition Ect
-        let verifier_key = self.keystore.get("verifier-key".as_bytes())?;
-        let mut parsed = parse_corim(corim, &corim_key, &verifier_key).map_err(|e| {
-            Error::Parse(
-                format!("CoRIM \"{}\"", corim.as_map_ref().id),
-                e.to_string(),
-            )
-        })?;
+        let mut parsed = parse_corim(corim, corim_key.as_deref(), &self.verifier_authority)
+            .map_err(|e| {
+                Error::Parse(
+                    format!("CoRIM \"{}\"", corim.as_map_ref().id),
+                    e.to_string(),
+                )
+            })?;
         self.items.append(&mut parsed);
         Ok(())
     }
@@ -466,41 +471,42 @@ impl<'a, S: KeyStore> CorimStore<'a> for MemCorimStore<'a, S> {
         self.items.ev_list.clone().into_iter()
     }
 
-    fn iter_key(&self) -> Self::KeyIter {
+    fn iter_keys(&self) -> Self::KeyIter {
         self.items.key_list.clone().into_iter()
     }
 }
 
-/// Function to parse corims and add to corim-store.
-/// `corim_key` define the authority who signed the corim, for unsigned corim, verifier's authority is used.
-/// In case of unsigned corim, `corim_key` and `verifier_key` are same.
+/// Parses a CoRIM and extracts into relevant relations. `corim_key` is the cryptographic
+/// public key used to verify a signed CoRIM. For unsigned CoRIMs, `verifier_key` is
+/// considered as the CoRIM authority as per
+/// [section-4.3 draft-ietf-rats-corim-11](https://datatracker.ietf.org/doc/html/draft-ietf-rats-corim-11#name-signer-authority-of-securel)
 #[allow(clippy::needless_lifetimes)]
 pub fn parse_corim<'a, 'b>(
     corim: &Corim<'a>,
-    corim_key: &[u8],
+    corim_key: Option<&[u8]>,
     verifier_key: &[u8],
 ) -> Result<CorimParseResult<'b>> {
-    let corim_verifier = OpensslSigner::public_key_from_pem(corim_key)?;
-    let corim_authority = vec![CryptoKeyTypeChoice::CoseKey(
-        corim_verifier.to_cose_key().into(),
-    )];
-
     // key related to Verifier (person using CoVER)
     let verifier = OpensslSigner::public_key_from_pem(verifier_key)?;
     let verifier_authority = vec![CryptoKeyTypeChoice::CoseKey(verifier.to_cose_key().into())];
 
-    let corim_map = match corim {
-        Corim::Signed(signed) => match signed.verify_signature(corim_verifier) {
-            Ok(_) => &signed.corim_map,
-            Err(err) => {
-                return Err(Error::custom(format!(
-                    "signature verification failed: {}",
-                    err
-                )));
-            }
-        },
-        Corim::Unsigned(corim_map) => corim_map,
+    let (corim_map, corim_authority) = match corim {
+        Corim::Signed(signed) => {
+            // None corim_key check is already done earlier, so it will always be Some here
+            let corim_verifier = OpensslSigner::public_key_from_pem(corim_key.unwrap())?;
+            let corim_authority = vec![CryptoKeyTypeChoice::CoseKey(
+                corim_verifier.to_cose_key().into(),
+            )];
+            signed
+                .verify_signature(corim_verifier)
+                .map_err(|err| Error::custom(format!("signature verification failed: {}", err)))?;
+            (&signed.corim_map, Some(corim_authority))
+        }
+        Corim::Unsigned(corim_map) => (corim_map.as_ref(), None),
     };
+
+    // For unsigned corim, set verifier authority as corim authority
+    let corim_authority = corim_authority.as_deref().unwrap_or(&verifier_authority);
 
     let corim_profile = corim_map.profile.clone();
     let mut result = CorimParseResult::new();
@@ -510,7 +516,7 @@ pub fn parse_corim<'a, 'b>(
             result.update_from_comid(
                 tagged_comid.as_ref(),
                 &corim_profile,
-                &corim_authority,
+                corim_authority,
                 &verifier_authority,
             )?;
         }
@@ -564,35 +570,39 @@ mod test {
     }
 
     #[test]
-    fn parse_signed_corim() {
-        let token = include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor");
-        let token_ta = include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor");
-        let token_ev = include_bytes!("../../test/corim/signed-corim-endval.cbor");
+    fn parses_signed_corims_into_expected_relations() {
         let key = include_bytes!("../../test/corim/key.pub.pem");
 
         let mut keystore = MemKeyStore::new();
         keystore.add("key.pub.pem".as_bytes(), key).unwrap();
-        keystore.add("verifier-key".as_bytes(), key).unwrap();
 
-        let mut store = MemCorimStore::new(keystore);
-        store.add_bytes(token.as_slice()).unwrap();
-        store.add_bytes(token_ta.as_slice()).unwrap();
-        store.add_bytes(token_ev.as_slice()).unwrap();
+        let mut store = MemCorimStore::new(keystore, key.to_vec());
+        for corim in [
+            include_bytes!("../../test/corim/signed-corim-cca-plat-rv.cbor").as_slice(),
+            include_bytes!("../../test/corim/signed-corim-cca-plat-ta.cbor").as_slice(),
+            include_bytes!("../../test/corim/signed-corim-endval.cbor").as_slice(),
+        ] {
+            store.add_bytes(corim).unwrap();
+        }
 
         assert!(!store.items.rv_list.is_empty());
         assert!(!store.items.key_list.is_empty());
-        assert!(!store.items.ev_list.is_empty(),);
+        assert!(!store.items.ev_list.is_empty());
 
+        assert!(
+            store
+                .items
+                .key_list
+                .iter()
+                .any(|relation| { relation.condition.key_type == Some(KeyType::AttestKey) })
+        );
         // Check if addition KeyECT has authority set.
         assert!(
             store
                 .items
                 .key_list
-                .first()
-                .unwrap()
-                .addition
-                .get_authority()
-                .is_some()
+                .iter()
+                .any(|relation| relation.addition.get_authority().is_some())
         );
     }
 
@@ -601,10 +611,9 @@ mod test {
         let token = include_bytes!("../../test/corim/corim-cca-plat-rv.cbor");
         let key = include_bytes!("../../test/corim/key.pub.pem");
 
-        let mut keystore = MemKeyStore::new();
-        keystore.add("verifier-key".as_bytes(), key).unwrap();
+        let keystore = MemKeyStore::new();
 
-        let mut store = MemCorimStore::new(keystore);
+        let mut store = MemCorimStore::new(keystore, key.to_vec());
         store.add_bytes(token.as_slice()).unwrap();
         assert!(!store.items.rv_list.is_empty());
     }

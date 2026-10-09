@@ -141,7 +141,7 @@ impl<'a, 'b> From<&MeasurementMap<'a>> for ElementMap<'b> {
 /// An [Ect]'s intended use is indicated by the `cmtype` field.
 ///
 /// Top level enum to contain all types of Ects.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum Ect<'a> {
     Element(ElementEct<'a>),
