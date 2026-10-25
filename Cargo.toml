@@ -37,7 +37,7 @@ serde_json = { version = "1.0.151", features = ["raw_value"] }
 pem = "4.0.0"
 picky-asn1-der = "0.5.6"
 picky-asn1-x509 = "0.15.4"
-elliptic-curve = { version = "0.14.1", features = ["arithmetic"] }
+elliptic-curve = { version = "0.14.3", features = ["arithmetic"] }
 p256 = "0.14.0"
 p384 = "0.14.0"
 p521 = "0.14.0"

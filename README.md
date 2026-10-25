@@ -14,13 +14,13 @@ This implementation is intended as a Proof-of-Concept only. It has the following
 The verification flow proceeds as follows.
 
 - CoRIMs are processed by validating their signatures for signed CoRIMs and extracting contained
-measurements into the "corim store" as RV (reference values) or Key relations.
+  measurements into the "corim store" as RV (reference values) or Key relations.
 - Unsigned CoRIM verification is not done and it is assumed that user has already verified the
-CoRIMs before passing into the verifier.
+  CoRIMs before passing into the verifier.
 - The signature on the evidence is verified using a trust anchor obtained from the corim store
-based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
-and implementation ID are used to look up the trust anchor in the corim store. Evidence claims
-are then extracted as ECT (environment-claims tuple) records.
+  based on an identifier inside the evidence. This is scheme-specific. For CCA, the instance ID
+  and implementation ID are used to look up the trust anchor in the corim store. Evidence claims
+  are then extracted as ECT (environment-claims tuple) records.
 - The evidence ECTs are then matched to the relations in the corim store. This results in the
   ACS (appraisal claims set) -- a vector of ECT records containing evidence claims and matched
   reference values and endorsements.
@@ -36,7 +36,6 @@ are then extracted as ECT (environment-claims tuple) records.
 [1]: https://www.ietf.org/archive/id/draft-ietf-rats-corim-11.html#name-reference-verifier
 [2]: https://www.ietf.org/archive/id/draft-ietf-rats-ear-04.html
 [3]: https://www.ietf.org/archive/id/draft-ietf-rats-ar4si-10.html
-
 
 ## API
 
