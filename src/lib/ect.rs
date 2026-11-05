@@ -807,7 +807,7 @@ mod test {
         let actual = serde_json::to_string(&ect).unwrap();
         println!("{}:", actual);
 
-        let expected = r#"{"environment":{"class":{"class-id":{"tag":600,"value":"[base64]:YWNtZS1pbXBsZW1lbnRhdGlvbi1pZC0wMDAwMDAwMDE"},"layer":0}},"authority":[{"type":"cert-thumbprint","value":"sha-256;AQID"}],"profile":{"type":"uri","value":"http://arm.com/psa/iot/1"},"element-list":[{"mkey":{"tag":601,"value":{"1":"BL","4":"1.2.3","5":"[base64]:rLsRx-TaIXIFUjzkzhokWuGiOa48a_2eeHH35di66Gs"}},"mval":{"digests":["sha-256;AmOCmYm2_ZVPcrqvL8ZLwuLwHWktTecphuqAj26ZgT8"]}}],"cmtype":"endorsements"}"#;
+        let expected = r#"{"environment":{"class":{"class-id":{"tag":600,"value":"[base64]:YWNtZS1pbXBsZW1lbnRhdGlvbi1pZC0wMDAwMDAwMDE"},"layer":0}},"authority":[{"type":"cert-thumbprint","value":["sha-256","AQID"]}],"profile":{"type":"uri","value":"http://arm.com/psa/iot/1"},"element-list":[{"mkey":{"tag":601,"value":{"1":"BL","4":"1.2.3","5":"[base64]:rLsRx-TaIXIFUjzkzhokWuGiOa48a_2eeHH35di66Gs"}},"mval":{"digests":[["sha-256","AmOCmYm2_ZVPcrqvL8ZLwuLwHWktTecphuqAj26ZgT8"]]}}],"cmtype":"endorsements"}"#;
 
         assert_eq!(actual, expected);
     }

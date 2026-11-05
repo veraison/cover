@@ -38,7 +38,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -53,7 +53,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -68,7 +68,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -83,7 +83,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       }
@@ -117,19 +117,19 @@
         "mval": {
           "integrity-registers": {
             "\"rem0\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem1\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem2\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem3\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rim\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ]
           }
         }
@@ -191,7 +191,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -206,7 +206,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -221,7 +221,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       },
@@ -236,7 +236,7 @@
         },
         "mval": {
           "digests": [
-            "sha-256;BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"
+            ["sha-256", "BwYFBAMCAQAPDg0MCwoJCBcWFRQTEhEQHx4dHBsaGRg"]
           ]
         }
       }
@@ -266,19 +266,19 @@
         "mval": {
           "integrity-registers": {
             "\"rem0\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem1\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem2\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rem3\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ],
             "\"rim\"": [
-              "sha-256;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              ["sha-256", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
             ]
           }
         }
