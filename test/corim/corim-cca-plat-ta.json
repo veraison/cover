@@ -44,7 +44,7 @@
               [
                 {
                   "type": "pkix-base64-key",
-                  "value": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUZrd0V3WUhLb1pJemowQ0FRWUlLb1pJemowREFRY0RRZ0FFTUtCQ1ROSWNLVVNEaWkxMXlTczM1MjZpRFo4QQppVG83VHU2S1BBcXY3RDdnUzJYcEpGYlppSXRTczNtOSs5VWU2R252SHcvR1cyWlphVnRzemdnWEl3PT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg"
+                  "value": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMKBCTNIcKUSDii11ySs3526iDZ8A\niTo7Tu6KPAqv7D7gS2XpJFbZiItSs3m9+9Ue6GnvHw/GW2ZZaVtszggXIw==\n-----END PUBLIC KEY-----"
                 }
               ]
             ]
